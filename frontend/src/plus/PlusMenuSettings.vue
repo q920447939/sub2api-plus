@@ -103,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getAll } from '@/api/admin/groups'
 import type { AdminGroup } from '@/types'
@@ -208,12 +208,21 @@ function onTemplateInput(e: Event) {
   })
 }
 
-onMounted(async () => {
-  if (!isKeyLaunch.value) return
+async function loadGroups() {
+  if (groups.value.length > 0) return // already loaded
   try {
     groups.value = await getAll()
   } catch {
     groups.value = []
   }
+}
+
+onMounted(() => {
+  if (isKeyLaunch.value) void loadGroups()
+})
+
+// Load groups when the admin switches the URL to plus:key_launch
+watch(isKeyLaunch, (v) => {
+  if (v) void loadGroups()
 })
 </script>
