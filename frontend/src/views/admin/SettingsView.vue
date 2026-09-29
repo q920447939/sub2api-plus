@@ -6928,6 +6928,13 @@
                       @update:model-value="(v: string) => (item.icon_svg = v)"
                     />
                   </div>
+
+                  <!-- [plus] fork options: open mode, param passing, module config -->
+                  <PlusMenuSettings
+                    :item="item"
+                    :menu-items="form.custom_menu_items"
+                    @change="(patch) => Object.assign(item, patch)"
+                  />
                 </div>
               </div>
 
@@ -9030,6 +9037,7 @@ import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
+import PlusMenuSettings from "@/plus/PlusMenuSettings.vue"; // [plus]
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import RechargeBonusTierEditor from "@/components/admin/settings/RechargeBonusTierEditor.vue";
@@ -9856,6 +9864,14 @@ const form = reactive<SettingsForm>({
     visibility: "user" | "admin";
     sort_order: number;
     hide_open_button?: boolean;
+    // [plus] fork-added options
+    open_mode?: "embed" | "new_tab";
+    pass_params?: boolean;
+    plus_config?: {
+      group_id: number;
+      url_template: string;
+      recharge_menu_id?: string;
+    };
   }>,
   custom_endpoints: [] as Array<{
     name: string;

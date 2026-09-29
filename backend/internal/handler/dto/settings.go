@@ -17,6 +17,10 @@ type CustomMenuItem struct {
 	Visibility     string `json:"visibility"` // "user" or "admin"
 	SortOrder      int    `json:"sort_order"`
 	HideOpenButton bool   `json:"hide_open_button,omitempty"`
+	// [plus] fork-added fields
+	OpenMode   string          `json:"open_mode,omitempty"`   // "embed" (default) or "new_tab"
+	PassParams *bool           `json:"pass_params,omitempty"` // append user_id/token/theme/lang; nil = true (default)
+	PlusConfig json.RawMessage `json:"plus_config,omitempty"` // module config, admin-only, stripped from public settings
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.
@@ -607,11 +611,13 @@ func ParseCustomMenuItems(raw string) []CustomMenuItem {
 }
 
 // ParseUserVisibleMenuItems parses custom menu items and filters out admin-only entries.
+// [plus] plus_config is admin-only and is stripped here so it never reaches public responses.
 func ParseUserVisibleMenuItems(raw string) []CustomMenuItem {
 	items := ParseCustomMenuItems(raw)
 	filtered := make([]CustomMenuItem, 0, len(items))
 	for _, item := range items {
 		if item.Visibility != "admin" {
+			item.PlusConfig = nil
 			filtered = append(filtered, item)
 		}
 	}

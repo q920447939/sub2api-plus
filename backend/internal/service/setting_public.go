@@ -753,7 +753,7 @@ func filterUserVisibleMenuItems(raw string) json.RawMessage {
 	var filtered []json.RawMessage
 	for i, item := range items {
 		if item.Visibility != "admin" {
-			filtered = append(filtered, fullItems[i])
+			filtered = append(filtered, stripMenuItemPlusConfig(fullItems[i])) // [plus]
 		}
 	}
 	if len(filtered) == 0 {
@@ -764,6 +764,24 @@ func filterUserVisibleMenuItems(raw string) json.RawMessage {
 		return json.RawMessage("[]")
 	}
 	return result
+}
+
+// [plus] stripMenuItemPlusConfig removes the admin-only "plus_config" field from a raw menu
+// item. Module settings stay server-side: the launcher resolves them by menu id.
+func stripMenuItemPlusConfig(raw json.RawMessage) json.RawMessage {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return raw
+	}
+	if _, ok := obj["plus_config"]; !ok {
+		return raw
+	}
+	delete(obj, "plus_config")
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return raw
+	}
+	return out
 }
 
 // safeRawJSONArray returns raw as json.RawMessage if it's valid JSON, otherwise "[]".
@@ -832,22 +850,50 @@ func extractOriginFromURL(rawURL string) string {
 }
 
 // parseCustomMenuItemURLs extracts URLs from a raw JSON array of custom menu items.
+// [plus] plus:<module> items contribute their module's target origin instead of a plain URL.
 func parseCustomMenuItemURLs(raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "[]" {
 		return nil
 	}
 	var items []struct {
-		URL string `json:"url"`
+		URL        string          `json:"url"`
+		PlusConfig json.RawMessage `json:"plus_config"`
 	}
 	if err := json.Unmarshal([]byte(raw), &items); err != nil {
 		return nil
 	}
 	urls := make([]string, 0, len(items))
 	for _, item := range items {
+		if strings.HasPrefix(strings.TrimSpace(item.URL), "plus:") {
+			if origin := plusModuleTargetOrigin(item.PlusConfig); origin != "" {
+				urls = append(urls, origin)
+			}
+			continue
+		}
 		if item.URL != "" {
 			urls = append(urls, item.URL)
 		}
 	}
 	return urls
+}
+
+// [plus] plusModuleTargetOrigin pulls the origin out of a plus module's url_template so the
+// embedded target is allowed by CSP frame-src.
+func plusModuleTargetOrigin(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var cfg struct {
+		URLTemplate string `json:"url_template"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return ""
+	}
+	if cfg.URLTemplate == "" {
+		return ""
+	}
+	// {key} is a placeholder; strip it before parsing as a URL.
+	probe := strings.ReplaceAll(cfg.URLTemplate, "{key}", "probe")
+	return probe
 }

@@ -194,6 +194,18 @@ export interface CustomMenuItem {
   hide_open_button?: boolean
   visibility: 'user' | 'admin'
   sort_order: number
+  // [plus] fork-added fields
+  open_mode?: 'embed' | 'new_tab'
+  pass_params?: boolean
+  plus_config?: KeyLaunchConfig
+}
+
+// [plus] configuration of a "plus:key_launch" menu item. Admin-only: the public settings
+// API strips it, so the frontend never sees it for regular users.
+export interface KeyLaunchConfig {
+  group_id: number
+  url_template: string
+  recharge_menu_id?: string
 }
 
 export interface CustomEndpoint {

@@ -196,6 +196,7 @@ import VersionBadge from '@/components/common/VersionBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
+import type { CustomMenuItem } from '@/types'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
@@ -734,12 +735,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
-      path: `/custom/${item.id}`,
-      label: item.label,
-      icon: null,
-      iconSvg: item.icon_svg,
-    })),
+    ...customMenuItemsForUser.value.map((item): NavItem => navItemForCustomMenu(item)),
   )
   return items
 }
@@ -765,6 +761,21 @@ const customMenuItemsForUser = computed(() => {
     .filter((item) => item.visibility === 'user')
     .sort((a, b) => a.sort_order - b.sort_order)
 })
+
+// [plus] Map a custom menu item onto a NavItem.
+// new_tab items route through the in-app launcher, which resolves plus modules (creating a
+// key when needed) and then hands the tab over to the real target.
+function navItemForCustomMenu(cm: CustomMenuItem): NavItem {
+  const base = {
+    label: cm.label,
+    icon: null,
+    iconSvg: cm.icon_svg,
+  }
+  if (cm.open_mode === 'new_tab') {
+    return { ...base, path: `/launch/${cm.id}` }
+  }
+  return { ...base, path: `/custom/${cm.id}` }
+}
 
 const customMenuItemsForAdmin = computed(() => {
   return adminSettingsStore.customMenuItems
@@ -847,14 +858,14 @@ const adminNavItems = computed((): NavItem[] => {
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {
-      filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+      filtered.push(navItemForCustomMenu(cm))
     }
     return filtered
   }
 
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
   for (const cm of customMenuItemsForAdmin.value) {
-    visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+    visible.push(navItemForCustomMenu(cm))
   }
   return visible
 })

@@ -127,7 +127,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useResizeObserver } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
@@ -148,6 +148,7 @@ interface TocItem {
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const adminSettingsStore = useAdminSettingsStore()
@@ -250,6 +251,8 @@ const embeddedUrl = computed(() => {
     authStore.token,
     pageTheme.value,
     locale.value,
+    // [plus] pass_params defaults to true so existing menus keep their current behaviour
+    menuItem.value.pass_params !== false,
   )
 })
 
@@ -442,6 +445,14 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+// [plus] A plus module menu must go through the launcher, which resolves it server-side and
+// opens it in the mode the admin configured. Redirect stale links (bookmarks, old sidebars).
+watch(menuItem, (item) => {
+  if (item?.url?.startsWith('plus:')) {
+    void router.replace(`/launch/${item.id}`)
+  }
+}, { immediate: true })
 
 onUnmounted(() => {
   markdownRequestVersion++

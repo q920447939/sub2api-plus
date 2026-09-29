@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/plus" // [plus]
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -1298,6 +1299,19 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 					response.BadRequest(c, "Custom menu item markdown slug cannot be empty (use md:slug format)")
 					return
 				}
+			} else if strings.HasPrefix(urlTrimmed, "plus:") { // [plus]
+				// Plus module mode: URL = "plus:<module>"
+				mod := strings.TrimPrefix(urlTrimmed, "plus:")
+				if strings.TrimSpace(mod) == "" {
+					response.BadRequest(c, "Custom menu item plus module name cannot be empty (use plus:module format)")
+					return
+				}
+				// A configured plus module must carry a valid config, so misconfiguration is
+				// caught at save time instead of when a user clicks the menu.
+				if _, err := plus.ParseKeyLaunchConfig(item.PlusConfig); err != nil {
+					response.BadRequest(c, "Custom menu item plus_config is invalid: "+err.Error())
+					return
+				}
 			} else {
 				if urlTrimmed == "" {
 					response.BadRequest(c, "Custom menu item URL is required (use md:slug for markdown pages)")
@@ -1311,6 +1325,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 					response.BadRequest(c, "Custom menu item URL must be an absolute http(s) URL or md:<slug>")
 					return
 				}
+			}
+			// [plus] validate open_mode
+			if item.OpenMode != "" && item.OpenMode != "embed" && item.OpenMode != "new_tab" {
+				response.BadRequest(c, "Custom menu item open_mode must be 'embed' or 'new_tab'")
+				return
 			}
 			if item.Visibility != "user" && item.Visibility != "admin" {
 				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")

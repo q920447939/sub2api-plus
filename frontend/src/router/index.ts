@@ -396,6 +396,18 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'customPage.title',
     }
   },
+  // [plus] launcher for new_tab custom menu items; resolves plus modules then opens the target
+  {
+    path: '/launch/:id',
+    name: 'PlusLaunch',
+    component: () => import('@/plus/LaunchView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Launch',
+      titleKey: 'customPage.title',
+    }
+  },
 
   // ==================== Admin Routes ====================
   {
