@@ -1,0 +1,100 @@
+# =============================================================================
+# Sub2API Plus — Local Build & Test Compose
+# =============================================================================
+# Builds the fork image locally from the Dockerfile, then runs it alongside
+# the standard Postgres and Redis containers.
+#
+# Quick start:
+#   1. Copy this file up one level if you like, or run from repo root:
+#        docker compose -f deploy/docker-compose.plus-local.yml --env-file deploy/.env.plus-local up --build -d
+#   2. Access: http://localhost:8090
+#   3. Logs:   docker compose -f deploy/docker-compose.plus-local.yml logs -f sub2api-plus
+#   4. Stop:   docker compose -f deploy/docker-compose.plus-local.yml down
+#
+# The image is built from the repo root because the Dockerfile copies
+# frontend/, backend/, and docs/legal/ from there.  Run the compose command
+# from the repo root, not from deploy/.
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Sub2API Plus application (built locally)
+  # ---------------------------------------------------------------------------
+  sub2api-plus:
+    build:
+      context: ..                   # repo root — Dockerfile needs frontend/ backend/ docs/
+      dockerfile: deploy/Dockerfile
+      args:
+        GOPROXY: "https://goproxy.cn,direct"
+    image: sub2api-plus:local       # tagged so repeated builds reuse the layer cache
+    container_name: sub2api-plus
+    restart: unless-stopped
+    ports:
+      - "8090:8080"                 # use 8090 on the host to avoid clashing with prod (8080)
+    depends_on:
+      sub2api-plus-postgres:
+        condition: service_healthy
+      sub2api-plus-redis:
+        condition: service_healthy
+    environment:
+      - AUTO_SETUP=true
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=release
+      - RUN_MODE=standard
+      - DATABASE_HOST=sub2api-plus-postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-sub2api}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.plus-local}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api_plus}
+      - DATABASE_SSLMODE=disable
+      - REDIS_HOST=sub2api-plus-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=0
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@local.test}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env.plus-local}
+      - JWT_SECRET=${JWT_SECRET:-dev-only-jwt-secret-change-for-prod}
+      - TZ=${TZ:-Asia/Shanghai}
+    volumes:
+      - sub2api-plus-data:/app/data
+
+  # ---------------------------------------------------------------------------
+  # Postgres (dedicated instance so it never touches prod data)
+  # ---------------------------------------------------------------------------
+  sub2api-plus-postgres:
+    image: postgres:16-alpine
+    container_name: sub2api-plus-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.plus-local}
+      - POSTGRES_DB=${POSTGRES_DB:-sub2api_plus}
+    volumes:
+      - sub2api-plus-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api_plus}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Redis (dedicated instance)
+  # ---------------------------------------------------------------------------
+  sub2api-plus-redis:
+    image: redis:7-alpine
+    container_name: sub2api-plus-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", ""]
+    volumes:
+      - sub2api-plus-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  sub2api-plus-data:
+  sub2api-plus-pg-data:
+  sub2api-plus-redis-data:
