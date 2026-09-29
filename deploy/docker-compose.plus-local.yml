@@ -23,7 +23,7 @@ services:
   sub2api-plus:
     build:
       context: ..                   # repo root — Dockerfile needs frontend/ backend/ docs/
-      dockerfile: deploy/Dockerfile
+      dockerfile: deploy/Dockerfile.plus-local   # [plus-local] raises Node heap to 4 GB
       args:
         GOPROXY: "https://goproxy.cn,direct"
     image: sub2api-plus:local       # tagged so repeated builds reuse the layer cache
