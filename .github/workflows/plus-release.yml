@@ -19,7 +19,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/sub2api-plus
+  IMAGE_REPO: sub2api-plus
 
 jobs:
   build-and-push:
@@ -32,18 +32,32 @@ jobs:
           fetch-depth: 0
 
       # 解析版本号和 tag 列表
-      # plus/v0.2.15-plus.1 → 版本 0.2.15-plus.1
+      # tag 推送:      plus/v0.2.15-plus.1  → 0.2.15-plus.1
+      # 手动触发/分支: 没有 tag，用 dev-<短 SHA>
       - name: Resolve version
         id: meta
         env:
           RAW_TAG: ${{ inputs.tag || github.ref_name }}
           IS_RELEASE: ${{ github.event_name == 'push' }}
         run: |
-          VERSION="${RAW_TAG#plus/v}"
+          # GitHub 用户名保留大小写，但镜像路径必须全小写
+          OWNER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE_NAME="${REGISTRY}/${OWNER}/${IMAGE_REPO}"
+          echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+          # 只有 plus/v* 才算版本号；否则是分支名，不能直接当 Docker tag 用
+          # （Docker tag 不允许含 /）
+          if [[ "$RAW_TAG" == plus/v* ]]; then
+            VERSION="${RAW_TAG#plus/v}"
+          else
+            VERSION="dev-${GITHUB_SHA:0:7}"
+          fi
+          # 兜底：把 Docker tag 不允许的字符换成 -
+          VERSION="${VERSION//[^A-Za-z0-9_.-]/-}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           # 组装 tag 列表：版本号始终打；只有 tag 推送事件才额外打 latest。
-          # 手动触发时 push=false，这里只用于本地构建校验。
+          # 手动触发时 push=false，这里只用于构建校验。
           TAGS="${IMAGE_NAME}:${VERSION}"
           if [ "$IS_RELEASE" = "true" ]; then
             TAGS="${TAGS}"$'\n'"${IMAGE_NAME}:latest"
@@ -55,7 +69,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           echo "is_release=${IS_RELEASE}" >> "$GITHUB_OUTPUT"
-          echo "Resolved version: ${VERSION}, is_release=${IS_RELEASE}"
+          echo "Resolved: image=${IMAGE_NAME} version=${VERSION} release=${IS_RELEASE}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
