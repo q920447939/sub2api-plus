@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '要构建的 tag（例：plus/v0.2.15-plus.1），留空则用当前分支构建（不推送镜像）'
+        description: '要构建的 tag（例：plus/v0.2.15-plus.1）。留空则只用当前分支验证构建，不推送镜像'
         required: false
         type: string
 
@@ -26,49 +26,66 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
-      # 解析版本号：plus/v0.2.15-plus.1 → 0.2.15-plus.1
+      # 解析版本号和 tag 列表
+      # plus/v0.2.15-plus.1 → 版本 0.2.15-plus.1
       - name: Resolve version
         id: meta
+        env:
+          RAW_TAG: ${{ inputs.tag || github.ref_name }}
+          IS_RELEASE: ${{ github.event_name == 'push' }}
         run: |
-          RAW_TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${RAW_TAG#plus/v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "image_tag=${IMAGE_NAME}:${VERSION}" >> "$GITHUB_OUTPUT"
-          # 如果是 latest（plus/v*-plus.* 中最新），同时打 latest tag
-          echo "is_release=${{ github.event_name == 'push' }}" >> "$GITHUB_OUTPUT"
+
+          # 组装 tag 列表：版本号始终打；只有 tag 推送事件才额外打 latest。
+          # 手动触发时 push=false，这里只用于本地构建校验。
+          TAGS="${IMAGE_NAME}:${VERSION}"
+          if [ "$IS_RELEASE" = "true" ]; then
+            TAGS="${TAGS}"$'\n'"${IMAGE_NAME}:latest"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "is_release=${IS_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${VERSION}, is_release=${IS_RELEASE}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
-        if: ${{ steps.meta.outputs.is_release == 'true' }}
+        if: ${{ github.event_name == 'push' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve build date
+        id: date
+        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/Dockerfile.plus-local
-          push: ${{ steps.meta.outputs.is_release == 'true' }}
-          # 版本 tag + latest，workflow_dispatch 只 build 不 push
-          tags: |
-            ${{ steps.meta.outputs.image_tag }}
-            ${{ steps.meta.outputs.is_release == 'true' && format('{0}:latest', env.IMAGE_NAME) || '' }}
+          # 手动触发只验证构建不推送，方便先确认能过
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             GOPROXY=https://goproxy.cn,direct
             GOSUMDB=sum.golang.google.cn
             VERSION=${{ steps.meta.outputs.version }}
             COMMIT=${{ github.sha }}
-            DATE=${{ github.event.head_commit.timestamp }}
-          # 用 GitHub Actions 缓存加速二次构建（前端 node_modules、Go mod）
+            DATE=${{ steps.date.outputs.value }}
+          # 用 GitHub Actions 内置缓存，二次构建复用前端依赖和 Go module
           cache-from: type=gha
           cache-to: type=gha,mode=max
