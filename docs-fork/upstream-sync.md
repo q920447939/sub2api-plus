@@ -15,22 +15,23 @@ origin    →  https://github.com/q920447939/sub2api-plus  （私有 fork）
 ## 步骤
 
 ```bash
+# 1. 下载上游最新代码
 git fetch upstream
 
+# 2. 把你的 main 更新到和上游一致
 git checkout main
 git merge upstream/main
+git push origin main
 
+# 3. 把上游的新内容合进功能分支
 git checkout plus/menu-enhancements
-git rebase main
+git merge main
+# 有冲突就解决（见下方），然后：
+git push origin plus/menu-enhancements
 ```
 
-rebase 完之后必须强推（rebase 重写了哈希，普通 push 会被拒）：
-
-```bash
-git push --force-with-lease origin plus/menu-enhancements
-```
-
-别用 VSCode 的「同步」按钮，它走 merge，会把旧提交再合进来。
+这里用 merge 而不是 rebase，普通 push 就够，不需要强推。
+VSCode 的同步按钮也可以正常使用。
 
 ## 冲突处理
 
