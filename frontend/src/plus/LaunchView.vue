@@ -49,20 +49,30 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { launchMenu, type LaunchBlockAction } from '@/plus/api'
+import { useAppStore } from '@/stores'
 
 const { t } = useI18n()
 const route = useRoute()
+const appStore = useAppStore()
 
 type LaunchState = 'loading' | 'blocked' | 'ready'
 
 const state = ref<LaunchState>('loading')
 const targetUrl = ref('')
-const openMode = ref<'embed' | 'new_tab'>('embed')
 const blockedMessage = ref('')
 const blockedTitle = ref('')
 const blockedAction = ref<LaunchBlockAction | undefined>(undefined)
 
 const menuId = computed(() => String(route.params.id ?? ''))
+
+// [plus] Read open_mode from public settings so this page knows whether to embed or redirect.
+// public settings strip plus_config but keep open_mode, so this works for regular users.
+const openMode = computed<'embed' | 'new_tab'>(() => {
+  const item = appStore.cachedPublicSettings?.custom_menu_items?.find(
+    (m) => m.id === menuId.value,
+  )
+  return item?.open_mode ?? 'embed'
+})
 
 async function resolve() {
   state.value = 'loading'

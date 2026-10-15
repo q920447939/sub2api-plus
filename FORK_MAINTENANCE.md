@@ -9,5 +9,6 @@
 | [docs-fork/key-launch.md](docs-fork/key-launch.md) | 要配一个带密钥跳转的菜单 |
 | [docs-fork/local-build.md](docs-fork/local-build.md) | 本地构建、跑起来、构建报错 |
 | [docs-fork/upstream-sync.md](docs-fork/upstream-sync.md) | 同步上游代码、解冲突、发版 |
+| [docs-fork/server-deploy.md](docs-fork/server-deploy.md) | 把 plus 镜像部署 / 更新到 server97 和 sub2Prod |
 
 > 放在 `docs-fork/` 而不是 `docs/`：上游 `.gitignore` 有 `docs/*` 规则，只白名单放行了几个上游文档，放进去不会进版本库。
