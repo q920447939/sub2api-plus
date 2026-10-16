@@ -647,6 +647,17 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.usage.description'
     }
   },
+  // [plus] 账号维度对账统计
+  {
+    path: '/admin/account-usage',
+    name: 'AdminAccountUsage',
+    component: () => import('@/views/admin/AccountUsageView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '账号用量对账'
+    }
+  },
   {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
