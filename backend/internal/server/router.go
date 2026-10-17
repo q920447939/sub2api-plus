@@ -135,5 +135,5 @@ func registerRoutes(
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)
 
 	// [plus] fork-specific module routes
-	plus.RegisterRoutes(v1, gin.HandlerFunc(jwtAuth), apiKeyService, subscriptionService, settingService)
+	plus.RegisterRoutes(v1, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), apiKeyService, subscriptionService, settingService)
 }

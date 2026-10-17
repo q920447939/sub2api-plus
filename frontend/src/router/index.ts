@@ -408,6 +408,13 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'customPage.title',
     }
   },
+  // [plus] 兑换刮刮乐
+  {
+    path: '/lottery',
+    name: 'PlusLottery',
+    component: () => import('@/plus/lottery/LotteryView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: '兑换刮刮乐' }
+  },
 
   // ==================== Admin Routes ====================
   {
@@ -657,6 +664,13 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: '账号用量对账'
     }
+  },
+  // [plus] 兑换刮刮乐管理
+  {
+    path: '/admin/lottery',
+    name: 'PlusAdminLottery',
+    component: () => import('@/plus/lottery/AdminLotteryView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: '兑换刮刮乐' }
   },
   {
     path: '/admin/affiliates',

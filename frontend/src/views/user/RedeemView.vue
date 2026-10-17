@@ -19,6 +19,8 @@
         </div>
       </div>
 
+      <PlusLotteryBanner /><!-- [plus] -->
+
       <!-- Redeem Form -->
       <div class="card">
         <div class="p-6">
@@ -131,6 +133,8 @@
           </div>
         </div>
       </transition>
+
+      <PlusLotteryPrompt :trigger="plusRedeemCount" /><!-- [plus] -->
 
       <!-- Error Message -->
       <transition name="fade">
@@ -375,6 +379,8 @@ import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
+import PlusLotteryBanner from '@/plus/lottery/LotteryBanner.vue' // [plus]
+import PlusLotteryPrompt from '@/plus/lottery/LotteryPrompt.vue' // [plus]
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -395,6 +401,7 @@ const redeemResult = ref<{
   validity_days?: number
 } | null>(null)
 const errorMessage = ref('')
+const plusRedeemCount = ref(0) // [plus] 兑换成功计数，驱动刮刮乐提示
 
 // History data
 const history = ref<RedeemHistoryItem[]>([])
@@ -485,6 +492,7 @@ const handleRedeem = async () => {
     const result = await redeemAPI.redeem(redeemCode.value.trim())
 
     redeemResult.value = result
+    if (result.type === 'balance') plusRedeemCount.value++ // [plus]
 
     // Refresh user data to get updated balance/concurrency
     try {

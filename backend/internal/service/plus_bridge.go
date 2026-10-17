@@ -5,6 +5,10 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+
+	entsql "entgo.io/ent/dialect/sql"
 )
 
 // GetGroupByID exposes groupRepo.GetByID for the plus package.
@@ -84,4 +88,32 @@ func CreateDedicatedKey(ctx context.Context, svc *APIKeyService, userID int64, n
 		Name:    name,
 		GroupID: groupID,
 	})
+}
+
+// PlusSQLDB exposes the underlying *sql.DB of the ent client so plus modules can own their tables.
+func PlusSQLDB(sub *SubscriptionService) (*sql.DB, error) {
+	if sub == nil || sub.entClient == nil {
+		return nil, errors.New("plus: subscription service has no ent client")
+	}
+	drv, ok := sub.entClient.Driver().(*entsql.Driver)
+	if !ok {
+		return nil, errors.New("plus: ent driver does not expose *sql.DB")
+	}
+	return drv.DB(), nil
+}
+
+// PlusBalanceInvalidator invalidates balance-related caches after a plus module changes users.balance
+// directly — the same two caches RedeemService clears after a balance redeem.
+type PlusBalanceInvalidator struct {
+	Sub    *SubscriptionService
+	APIKey *APIKeyService
+}
+
+func (p PlusBalanceInvalidator) InvalidateUserBalance(ctx context.Context, userID int64) {
+	if p.Sub != nil && p.Sub.billingCacheService != nil {
+		_ = p.Sub.billingCacheService.InvalidateUserBalance(ctx, userID)
+	}
+	if p.APIKey != nil {
+		p.APIKey.InvalidateAuthCacheByUserID(ctx, userID)
+	}
 }
