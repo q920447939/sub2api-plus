@@ -30,16 +30,6 @@ export function relativeTime(iso: string, now: number): string {
   return `${Math.floor(h / 24)} 天前`
 }
 
-// 东八区 HH:mm，与活动统计口径一致
-export function clockTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'Asia/Shanghai'
-  })
-}
-
 /** 大奖门槛：宣传最高可得的 20%，至少 $5 */
 export function bigWinThreshold(promoMax: number): number {
   return Math.max(5, promoMax * 0.2)

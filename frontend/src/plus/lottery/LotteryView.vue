@@ -106,10 +106,6 @@
                   {{ overview.chance_valid_hours }} 小时内有效，过期作废
                 </li>
                 <li>每张卡必中，奖金直接存入账户余额，可在余额记录中查看</li>
-                <li>
-                  单张刮刮卡奖金最高为对应卡密面值的
-                  {{ Math.round(overview.single_order_pct * 100) }}%
-                </li>
               </ul>
             </div>
           </div>
@@ -178,7 +174,7 @@ import { useAppStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import * as lotteryAPI from '@/api/lottery'
-import type { DrawResult, FeedItem, LotteryOverview, UserDraw } from '@/api/lottery'
+import type { DrawResult, FeedItem, LeaderboardItem, LotteryOverview, UserDraw } from '@/api/lottery'
 
 const router = useRouter()
 const appStore = useAppStore()
@@ -186,7 +182,7 @@ const authStore = useAuthStore()
 
 const loading = ref(true)
 const overview = ref<LotteryOverview | null>(null)
-const leaderboard = ref<FeedItem[]>([])
+const leaderboard = ref<LeaderboardItem[]>([])
 const feed = ref<FeedItem[]>([])
 const myDraws = ref<UserDraw[]>([])
 

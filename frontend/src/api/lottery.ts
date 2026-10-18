@@ -61,8 +61,6 @@ export interface LotteryOverview {
   participants: number
   total_awarded: number
   leaderboard_enabled: boolean
-  /** 单卡奖金上限占订单实付的比例，0~1 */
-  single_order_pct: number
 }
 
 export interface DrawResult {
@@ -80,6 +78,11 @@ export interface FeedItem {
   display_name: string
   amount: number
   created_at: string
+}
+
+export interface LeaderboardItem {
+  display_name: string
+  amount: number
 }
 
 export interface UserDraw {
@@ -157,8 +160,8 @@ export async function getFeed(limit = 30): Promise<FeedItem[]> {
   return data ?? []
 }
 
-export async function getLeaderboard(limit = 10): Promise<FeedItem[]> {
-  const { data } = await apiClient.get<FeedItem[]>('/plus/lottery/leaderboard', { params: { limit } })
+export async function getLeaderboard(limit = 10): Promise<LeaderboardItem[]> {
+  const { data } = await apiClient.get<LeaderboardItem[]>('/plus/lottery/leaderboard', { params: { limit } })
   return data ?? []
 }
 

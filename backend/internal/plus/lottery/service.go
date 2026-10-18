@@ -161,7 +161,6 @@ type Overview struct {
 	Participants   int64        `json:"participants"`
 	TotalAwarded   float64      `json:"total_awarded"`
 	Leaderboard    bool         `json:"leaderboard_enabled"`
-	SingleOrderPct float64      `json:"single_order_pct"`
 }
 
 func (s *Service) Overview(ctx context.Context, userID int64) (*Overview, error) {
@@ -174,7 +173,6 @@ func (s *Service) Overview(ctx context.Context, userID int64) (*Overview, error)
 		PromoMaxAmount: cfg.PromoMaxAmount,
 		ChanceTiers:    cfg.ChanceTiers,
 		Leaderboard:    cfg.VirtualFeed.LeaderboardEnabled,
-		SingleOrderPct: cfg.RiskControl.SingleOrderPct,
 		ValidHours:     cfg.ChanceValidHours,
 	}
 	if !cfg.Enabled {
@@ -233,13 +231,13 @@ func (s *Service) Feed(ctx context.Context, limit int) ([]FeedItem, error) {
 	return s.repo.ListFeed(ctx, clampLimit(limit, 50), cfg.VirtualFeed.Enabled)
 }
 
-func (s *Service) Leaderboard(ctx context.Context, limit int) ([]FeedItem, error) {
+func (s *Service) Leaderboard(ctx context.Context, limit int) ([]LeaderboardItem, error) {
 	cfg, _, err := s.Config(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if !cfg.VirtualFeed.LeaderboardEnabled {
-		return []FeedItem{}, nil
+		return []LeaderboardItem{}, nil
 	}
 	return s.repo.Leaderboard(ctx, s.Today(), clampLimit(limit, 20), cfg.VirtualFeed.Enabled)
 }

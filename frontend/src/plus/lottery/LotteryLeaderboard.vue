@@ -1,4 +1,4 @@
-<!-- [plus] 今日手气榜：前三名领奖台 + 4~10 名列表 -->
+<!-- [plus] 今日手气榜：前三名领奖台 + 4~10 名列表（不展示中奖时间） -->
 <template>
   <div class="card p-5">
     <div class="flex items-center justify-between">
@@ -58,7 +58,6 @@
             {{ avatarText(item.display_name) }}
           </span>
           <span class="min-w-0 flex-1 truncate text-gray-700 dark:text-gray-300">{{ item.display_name }}</span>
-          <span class="text-xs tabular-nums text-gray-400">{{ clockTime(item.created_at) }}</span>
           <span class="w-16 text-right font-semibold tabular-nums text-orange-600 dark:text-orange-400"
             >${{ item.amount.toFixed(2) }}</span
           >
@@ -75,10 +74,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { FeedItem } from '@/api/lottery'
-import { avatarClass, avatarText, clockTime } from './feedUtils'
+import type { LeaderboardItem } from '@/api/lottery'
+import { avatarClass, avatarText } from './feedUtils'
 
-const props = defineProps<{ items: FeedItem[] }>()
+const props = defineProps<{ items: LeaderboardItem[] }>()
 
 const medal = ['bg-amber-400', 'bg-gray-400', 'bg-orange-400']
 const stand = [

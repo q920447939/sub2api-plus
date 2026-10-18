@@ -10,7 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-// FeedItem 中奖动态（滚动记录 / 排行榜条目）。对用户端不暴露是否虚拟。
+// FeedItem 中奖动态滚动记录。对用户端不暴露是否虚拟。
 type FeedItem struct {
 	DisplayName string    `json:"display_name"`
 	Amount      float64   `json:"amount"`
@@ -30,11 +30,17 @@ func (r *Repository) ListFeed(ctx context.Context, limit int, includeVirtual boo
 	return scanFeed(rows)
 }
 
-// Leaderboard 当日手气榜：每个展示名取单次最高金额
-func (r *Repository) Leaderboard(ctx context.Context, day DayRange, limit int, includeVirtual bool) ([]FeedItem, error) {
+// LeaderboardItem 手气榜条目，只展示昵称与金额
+type LeaderboardItem struct {
+	DisplayName string  `json:"display_name"`
+	Amount      float64 `json:"amount"`
+}
+
+// Leaderboard 当日手气榜：每个展示名取单次最高金额，同额先中者在前
+func (r *Repository) Leaderboard(ctx context.Context, day DayRange, limit int, includeVirtual bool) ([]LeaderboardItem, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT display_name, amount, created_at, is_virtual FROM (
-		   SELECT DISTINCT ON (display_name) display_name, amount::float8 AS amount, created_at, is_virtual
+		`SELECT display_name, amount FROM (
+		   SELECT DISTINCT ON (display_name) display_name, amount::float8 AS amount, created_at
 		   FROM plus_lottery_feed
 		   WHERE created_at >= $1 AND created_at < $2 AND created_at <= NOW() AND ($4 OR NOT is_virtual)
 		   ORDER BY display_name, amount DESC, created_at
@@ -43,7 +49,16 @@ func (r *Repository) Leaderboard(ctx context.Context, day DayRange, limit int, i
 	if err != nil {
 		return nil, err
 	}
-	return scanFeed(rows)
+	defer rows.Close()
+	list := []LeaderboardItem{}
+	for rows.Next() {
+		var item LeaderboardItem
+		if err := rows.Scan(&item.DisplayName, &item.Amount); err != nil {
+			return nil, err
+		}
+		list = append(list, item)
+	}
+	return list, rows.Err()
 }
 
 func scanFeed(rows *sql.Rows) ([]FeedItem, error) {

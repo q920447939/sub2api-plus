@@ -37,7 +37,7 @@ ssh server97
 cd /home/sub2api_new/sub2api/deploy
 
 # 停旧容器（数据文件不会丢，只停容器）
-docker compose -f docker-compose.local.yml down
+docker compose -f docker-compose.plus.yml down
 
 # 拉新镜像并启动（GHCR 是公开的，不需要登录）
 docker compose -f docker-compose.plus.yml pull
@@ -56,7 +56,7 @@ docker compose -f docker-compose.plus.yml logs --tail=50 sub2api
 ssh sub2Prod
 cd /home/sub2api_new/sub2api/deploy
 
-docker compose -f docker-compose.local.yml down
+docker compose -f docker-compose.plus.yml down
 docker compose -f docker-compose.plus.yml pull
 docker compose -f docker-compose.plus.yml up -d
 
