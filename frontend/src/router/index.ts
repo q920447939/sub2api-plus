@@ -13,6 +13,7 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import { plusParkAdminRoutes } from '@/plus/park/adminRoutes' // [plus]
 
 /**
  * Route definitions with lazy loading
@@ -408,13 +409,16 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'customPage.title',
     }
   },
-  // [plus] 兑换刮刮乐
+  // [plus] 积分乐园（签到 + 幸运九宫格）；旧入口统一跳转
   {
-    path: '/lottery',
-    name: 'PlusLottery',
-    component: () => import('@/plus/lottery/LotteryView.vue'),
-    meta: { requiresAuth: true, requiresAdmin: false, title: '兑换刮刮乐' }
+    path: '/points-park',
+    name: 'PlusPointsPark',
+    component: () => import('@/plus/park/PointsParkView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: '积分乐园' }
   },
+  { path: '/checkin', redirect: { path: '/points-park', query: { tab: 'checkin' } } }, // [plus]
+  { path: '/slot', redirect: { path: '/points-park', query: { tab: 'grid' } } }, // [plus]
+  { path: '/lottery', redirect: '/points-park' }, // [plus]
 
   // ==================== Admin Routes ====================
   {
@@ -665,13 +669,7 @@ const routes: RouteRecordRaw[] = [
       title: '账号用量对账'
     }
   },
-  // [plus] 兑换刮刮乐管理
-  {
-    path: '/admin/lottery',
-    name: 'PlusAdminLottery',
-    component: () => import('@/plus/lottery/AdminLotteryView.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true, title: '兑换刮刮乐' }
-  },
+  ...plusParkAdminRoutes, // [plus] 积分乐园管理端（概览 / 签到 / 九宫格 / 积分）
   {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'

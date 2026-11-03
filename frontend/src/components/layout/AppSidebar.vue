@@ -229,8 +229,9 @@ import type { CustomMenuItem } from '@/types'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
-import { lotteryNavFlag } from '@/plus/lottery/navFlag' // [plus]
-import { LotteryNavIcon } from '@/plus/lottery/navIcon' // [plus]
+import { pointsParkNavFlag } from '@/plus/park/navFlag' // [plus]
+import { ParkNavIcon } from '@/plus/park/navIcon' // [plus]
+import { pointsParkAdminNav } from '@/plus/park/adminNav' // [plus]
 
 interface NavItem {
   path: string
@@ -766,7 +767,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    { path: '/lottery', label: '兑换刮刮乐', icon: LotteryNavIcon, hideInSimpleMode: true, featureFlag: lotteryNavFlag }, // [plus]
+    { path: '/points-park', label: '积分乐园', icon: ParkNavIcon, hideInSimpleMode: true, featureFlag: pointsParkNavFlag }, // [plus]
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => navItemForCustomMenu(item)),
@@ -887,7 +888,7 @@ const adminNavItems = computed((): NavItem[] => {
     },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/account-usage', label: '账号用量对账', icon: ChartIcon }, // [plus]
-    { path: '/admin/lottery', label: '兑换刮刮乐', icon: LotteryNavIcon }, // [plus]
+    pointsParkAdminNav, // [plus]
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 

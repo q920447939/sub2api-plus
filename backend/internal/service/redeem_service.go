@@ -548,6 +548,7 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 
 	// 事务提交成功后失效缓存
 	s.invalidateRedeemCaches(ctx, userID, redeemCode)
+	plusAfterRedeem(ctx, userID, redeemCode, rateLimitPolicy) // [plus] 兑换送积分钩子，失败只记日志
 
 	// 余额类正数兑换码触发邀请返利（best-effort，失败不影响兑换结果）
 	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 {

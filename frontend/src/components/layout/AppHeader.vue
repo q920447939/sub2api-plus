@@ -25,6 +25,7 @@
       <div class="flex min-w-0 items-center gap-1 sm:gap-3">
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
+        <CheckinHeaderButton v-if="user" /> <!-- [plus] -->
 
         <!-- Docs Link -->
         <a
@@ -260,6 +261,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
+import CheckinHeaderButton from '@/plus/checkin/CheckinHeaderButton.vue' // [plus]
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
