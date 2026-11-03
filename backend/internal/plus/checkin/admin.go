@@ -95,7 +95,7 @@ func (s *Service) AdminLogs(ctx context.Context, q LogQuery) ([]AdminLog, int64,
 	if err != nil {
 		return nil, 0, 0, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	list := []AdminLog{}
 	for rows.Next() {
 		var it AdminLog
@@ -146,7 +146,7 @@ func (s *Service) AdminStats(ctx context.Context, days int) (*AdminStats, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	byDate := map[string]DayStat{}
 	for rows.Next() {
 		var d time.Time

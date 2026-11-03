@@ -101,7 +101,7 @@ func (s *Service) Overview(ctx context.Context, userID int64) (*Overview, error)
 		if cfg.WarnDays > 0 {
 			warnAt := cfg.WarnAt(acc.LastActiveAt)
 			if warnAt != nil && time.Now().After(*warnAt) {
-				days := int((*expires).Sub(time.Now()).Hours()/24) + 1
+				days := int(time.Until(*expires).Hours()/24) + 1
 				if days < 0 {
 					days = 0
 				}

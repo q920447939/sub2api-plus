@@ -133,7 +133,7 @@ func (r *Repository) pendingRedeems(ctx context.Context, since, before time.Time
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var list []pendingRedeem
 	for rows.Next() {
 		var p pendingRedeem

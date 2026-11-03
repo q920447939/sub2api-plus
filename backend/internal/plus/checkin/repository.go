@@ -160,7 +160,7 @@ func (r *Repository) MonthLogs(ctx context.Context, userID int64, year, month in
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var dates []time.Time
 	for rows.Next() {
 		var d time.Time

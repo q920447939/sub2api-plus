@@ -113,7 +113,7 @@ func (r *Repository) ListLedger(ctx context.Context, userID int64, page, pageSiz
 	}
 	offset := (page - 1) * pageSize
 
-	baseArgs := []interface{}{userID}
+	baseArgs := []any{userID}
 	where := `WHERE user_id = $1`
 	if reason != "" {
 		where += ` AND reason = $2`
@@ -138,7 +138,7 @@ func (r *Repository) ListLedger(ctx context.Context, userID int64, page, pageSiz
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var list []LedgerItem
 	for rows.Next() {
 		var item LedgerItem

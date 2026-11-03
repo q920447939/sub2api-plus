@@ -71,7 +71,7 @@ func applyDelta(ctx context.Context, dbtx DBTX, userID, delta int64, reason stri
 
 	// 写流水
 	var entry LedgerEntry
-	var refIDVal interface{}
+	var refIDVal any
 	if refID > 0 {
 		refIDVal = refID
 	}

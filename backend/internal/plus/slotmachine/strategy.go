@@ -4,8 +4,6 @@ package slotmachine
 import (
 	"crypto/rand"
 	"encoding/binary"
-
-	"github.com/lib/pq"
 )
 
 // RNG 随机源接口，便于测试注入确定性实现
@@ -52,8 +50,6 @@ func PickWeighted(weights []float64, rng RNG) int {
 	}
 	return last
 }
-
-func pqInt64Array(ids []int64) any { return pq.Array(ids) }
 
 // PickBP 按万分比概率抽取下标（概率合计应为 FullBP）
 func PickBP(probs []int, rng RNG) int {

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -142,7 +143,7 @@ func TestITExpire(t *testing.T) {
 		`UPDATE plus_points_accounts SET last_active_at = NOW() - INTERVAL '400 days' WHERE user_id = $1`, uid)
 
 	repo := NewRepository(db)
-	threshold := now().AddDate(0, 0, -365)
+	threshold := time.Now().AddDate(0, 0, -365)
 	res, more, err := repo.ExpireInactive(ctx, threshold, 100)
 	if err != nil {
 		t.Fatal(err)

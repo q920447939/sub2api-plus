@@ -6,15 +6,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"time"
-
-	"github.com/lib/pq"
 )
 
 // DBTX 被 *sql.DB 与 *sql.Tx 同时满足，让 Credit/Debit 既能独立执行也能并入外层事务。
 type DBTX interface {
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 // Repository 封装积分模块的全部数据访问。按职责拆分在 repo_*.go 中。
@@ -83,11 +80,6 @@ func (r *Repository) SaveConfig(ctx context.Context, cfg Config, expectVer int64
 
 // ─── 工具 ──────────────────────────────────────────────────────────────
 
-func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	return errors.As(err, &pqErr) && pqErr.Code == "23505"
-}
-
 func (r *Repository) withTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -99,6 +91,3 @@ func (r *Repository) withTx(ctx context.Context, fn func(tx *sql.Tx) error) erro
 	}
 	return tx.Commit()
 }
-
-// now 返回当前时间，便于测试注入
-var now = func() time.Time { return time.Now() }

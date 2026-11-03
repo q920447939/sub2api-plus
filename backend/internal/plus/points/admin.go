@@ -113,7 +113,7 @@ func (s *Service) AdminListAccounts(ctx context.Context, q AccountQuery) ([]Admi
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	list := []AdminAccount{}
 	for rows.Next() {
 		var a AdminAccount
@@ -157,7 +157,7 @@ func (s *Service) AdminLedger(ctx context.Context, q LedgerQuery) ([]AdminLedger
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	list := []AdminLedgerItem{}
 	for rows.Next() {
 		var it AdminLedgerItem
@@ -261,7 +261,7 @@ func (s *Service) topHolders(ctx context.Context, limit int) ([]TopHolder, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	list := []TopHolder{}
 	for rows.Next() {
 		var h TopHolder
@@ -301,7 +301,7 @@ func (s *Service) AdminStats(ctx context.Context, days int) (*PointsStats, error
 		var reason string
 		var in, outAmt int64
 		if err := rows.Scan(&reason, &in, &outAmt); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		if in > 0 {
@@ -311,7 +311,7 @@ func (s *Service) AdminStats(ctx context.Context, days int) (*PointsStats, error
 			out.TodayConsumed = append(out.TodayConsumed, ReasonAmount{reason, outAmt})
 		}
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -325,7 +325,7 @@ func (s *Service) AdminStats(ctx context.Context, days int) (*PointsStats, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	byDate := map[string]PointsDayStat{}
 	for rows.Next() {
 		var d time.Time

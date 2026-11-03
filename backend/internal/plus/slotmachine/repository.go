@@ -204,7 +204,7 @@ func (r *Repository) ListHistory(ctx context.Context, userID int64, winOnly bool
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	list := []SpinRecord{}
 	for rows.Next() {
 		var rec SpinRecord
@@ -275,7 +275,7 @@ func (r *Repository) ListAdminSpins(ctx context.Context, q SpinQuery) ([]AdminSp
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	list := []AdminSpin{}
 	for rows.Next() {
 		var a AdminSpin
@@ -309,7 +309,7 @@ func (r *Repository) LockPots(ctx context.Context, tx *sql.Tx) (map[string]int64
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[string]int64{}
 	for rows.Next() {
 		var pot string
@@ -371,7 +371,7 @@ func (r *Repository) ListPotLedger(ctx context.Context, manualOnly bool, limit i
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	list := []PotLedgerItem{}
 	for rows.Next() {
 		var it PotLedgerItem
@@ -415,7 +415,7 @@ func (r *Repository) PotStats(ctx context.Context, dayStart time.Time) ([]PotSta
 	if err != nil {
 		return nil, SpinStat{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	stats := []PotStat{}
 	for rows.Next() {
 		var s PotStat
@@ -460,7 +460,7 @@ func (r *Repository) ListFeed(ctx context.Context, since time.Time, limit int) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	list := []FeedItem{}
 	for rows.Next() {
 		var it FeedItem
@@ -479,7 +479,7 @@ func (r *Repository) ListAdminFeed(ctx context.Context, limit int) ([]AdminFeedI
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	list := []AdminFeedItem{}
 	for rows.Next() {
 		var it AdminFeedItem

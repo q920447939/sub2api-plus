@@ -82,13 +82,13 @@ func (s *Service) AdminStats(ctx context.Context, days int) (*SlotStats, error) 
 		var d time.Time
 		var st SpinDayStat
 		if err := rows.Scan(&d, &st.Spins, &st.Users, &st.Cost, &st.Payout, &st.PrizePoints, &st.PrizeBalance, &st.BalanceWins); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		st.Date = d.Format("2006-01-02")
 		byDate[st.Date] = st
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -112,12 +112,12 @@ func (s *Service) AdminStats(ctx context.Context, days int) (*SlotStats, error) 
 		var i int
 		var n int64
 		if err := rows.Scan(&i, &n); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		hits[i] = n
 	}
-	rows.Close()
+	_ = rows.Close()
 	rows, err = db.QueryContext(ctx,
 		`SELECT t, COUNT(*) FROM plus_slot_spins, UNNEST(excluded_tiers) AS t WHERE created_at >= $1 GROUP BY t`, start)
 	if err != nil {
@@ -127,12 +127,12 @@ func (s *Service) AdminStats(ctx context.Context, days int) (*SlotStats, error) 
 		var i int
 		var n int64
 		if err := rows.Scan(&i, &n); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		excl[i] = n
 	}
-	rows.Close()
+	_ = rows.Close()
 	for i, t := range cfg.Tiers {
 		out.Tiers = append(out.Tiers, TierStat{Index: i, Label: t.Label, Emoji: t.Emoji, PrizeType: t.PrizeType,
 			ProbBP: t.ProbBP, Hits: hits[i], Excluded: excl[i]})
