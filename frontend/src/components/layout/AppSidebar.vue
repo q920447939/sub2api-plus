@@ -232,6 +232,8 @@ import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 import { pointsParkNavFlag } from '@/plus/park/navFlag' // [plus]
 import { ParkNavIcon } from '@/plus/park/navIcon' // [plus]
 import { pointsParkAdminNav } from '@/plus/park/adminNav' // [plus]
+import { channelStatusNavFlag } from '@/plus/channelstatus/navFlag' // [plus]
+import { ChannelStatusNavIcon } from '@/plus/channelstatus/navIcon' // [plus]
 
 interface NavItem {
   path: string
@@ -768,6 +770,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+    { path: '/channel-status', label: t('nav.channelStatus'), icon: ChannelStatusNavIcon, featureFlag: channelStatusNavFlag }, // [plus]
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
@@ -845,6 +848,7 @@ const adminNavItems = computed((): NavItem[] => {
       children: [
         { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon },
         { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+        { path: '/admin/channel-status', label: '渠道状态设置', icon: ChannelStatusNavIcon }, // [plus]
       ],
     },
     // 「仅充值」站点连管理端的「订阅管理」入口也一并收起（路由本身不拦截）。

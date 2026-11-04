@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -116,4 +117,60 @@ func (p PlusBalanceInvalidator) InvalidateUserBalance(ctx context.Context, userI
 	if p.APIKey != nil {
 		p.APIKey.InvalidateAuthCacheByUserID(ctx, userID)
 	}
+}
+
+// PlusMonitorProbeRequest is one V1-style challenge probe request, built without doing any I/O.
+// The plus channel-status prober sends it with its own HTTP client: its target is the admin-
+// configured site gateway (often an intranet address), so the V1 SSRF-blocking client does not fit.
+type PlusMonitorProbeRequest struct {
+	URL      string
+	Body     []byte
+	Headers  map[string]string
+	Expected string // challenge answer
+	MaxBytes int64  // response read limit (same as V1)
+}
+
+// PlusMonitorBuildProbe builds the V1 challenge request (same prompt / small max_tokens / adapters).
+func PlusMonitorBuildProbe(provider, apiMode, endpoint, apiKey, model string) (*PlusMonitorProbeRequest, error) {
+	if err := validateAPIMode(provider, apiMode); err != nil {
+		return nil, err
+	}
+	adapter, mode, ok := providerAdapterFor(provider, apiMode)
+	if !ok {
+		return nil, errors.New("unsupported provider " + provider)
+	}
+	ch := generateChallenge()
+	body, err := buildRequestBody(adapter, provider, mode, model, ch.Prompt, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &PlusMonitorProbeRequest{
+		URL:      joinURL(endpoint, monitorRequestPath(provider, endpoint, adapter, model)),
+		Body:     body,
+		Headers:  mergeHeaders(adapter.buildHeaders(apiKey), nil),
+		Expected: ch.Expected,
+		MaxBytes: monitorResponseMaxBytes,
+	}, nil
+}
+
+// PlusMonitorJudgeProbe applies V1's verdict to a finished HTTP exchange. ok is true for a 2xx
+// response whose text answers the challenge; message is sanitized and truncated like V1.
+func PlusMonitorJudgeProbe(provider, apiMode string, req *PlusMonitorProbeRequest, status int, respBody []byte, reqErr error) (ok bool, message string) {
+	if reqErr != nil {
+		return false, truncateMessage(sanitizeErrorMessage(reqErr.Error()))
+	}
+	if status < 200 || status >= 300 {
+		return false, truncateMessage(sanitizeErrorMessage("upstream HTTP " + strconv.Itoa(status) + ": " + truncateForErrorBody(string(respBody))))
+	}
+	adapter, mode, _ := providerAdapterFor(provider, apiMode)
+	var text string
+	if provider == MonitorProviderOpenAI && mode == MonitorAPIModeResponses {
+		text = extractOpenAIResponsesText(respBody)
+	} else {
+		text = extractMonitorResponseText(adapter, respBody)
+	}
+	if !validateChallenge(text, req.Expected) {
+		return false, truncateMessage(sanitizeErrorMessage("challenge mismatch (expected " + req.Expected + ", got " + strconv.Quote(text) + ")"))
+	}
+	return true, ""
 }

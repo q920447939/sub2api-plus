@@ -6,6 +6,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/Wei-Shaw/sub2api/internal/plus/channelstatus"
 	"github.com/Wei-Shaw/sub2api/internal/plus/checkin"
 	"github.com/Wei-Shaw/sub2api/internal/plus/points"
 	"github.com/Wei-Shaw/sub2api/internal/plus/slotmachine"
@@ -38,6 +39,20 @@ func RegisterRoutes(
 		checkinSvc := registerCheckin(v1, plus, adminAuth, sub, pointsSvc)
 		registerSlot(v1, plus, adminAuth, sub, apiKey, pointsSvc, checkinSvc)
 	}
+
+	registerChannelStatus(v1, plus, adminAuth, sub)
+}
+
+// registerChannelStatus wires 渠道状态（读上游 V2 预聚合表，独立配置）。
+func registerChannelStatus(v1, userGroup *gin.RouterGroup, adminAuth gin.HandlerFunc, sub *service.SubscriptionService) {
+	db, err := service.PlusSQLDB(sub)
+	if err != nil {
+		log.Printf("[plus.channelstatus] disabled: %v", err)
+		return
+	}
+	admin := v1.Group("/plus/admin")
+	admin.Use(adminAuth)
+	channelstatus.Register(db, userGroup, admin)
 }
 
 // registerPoints wires the points module. Returns nil on failure (disables dependents).

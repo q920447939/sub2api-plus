@@ -96,11 +96,11 @@ git push origin --delete plus/v0.2.15-plus.1      # 删远端（不会触发 CI�
 | 文件 | 改动 |
 |---|---|
 | `types/index.ts` | `CustomMenuItem` 加三个可选字段；新增 `KeyLaunchConfig` |
-| `components/layout/AppSidebar.vue` | 新增 `navItemForCustomMenu()` |
+| `components/layout/AppSidebar.vue` | 新增 `navItemForCustomMenu()`；渠道状态：用户端 `/channel-status` 一项、管理端「渠道管理」下「渠道状态设置」一项（上游 `/monitor` 未改，靠关闭上游 `channel_monitor_enabled` 隐藏） |
 | `utils/embedded-url.ts` | `buildEmbeddedUrl` 加第 6 个参数 `passParams` |
 | `views/admin/SettingsView.vue` | 插入 `<PlusMenuSettings>` |
 | `views/user/CustomPageView.vue` | `plus:` URL 重定向到 `/launch/:id` |
-| `router/index.ts` | 新增 `/launch/:id` |
+| `router/index.ts` | 新增 `/launch/:id`；展开 `plusChannelStatusRoutes` |
 | `i18n/locales/{zh,en}/index.ts` | 引入 `plus` 语言包 |
 | `i18n/locales/{zh,en}/admin/settings.ts` | 新增 `plusMenu.*` 键 |
 
