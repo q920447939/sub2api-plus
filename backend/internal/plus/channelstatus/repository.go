@@ -57,6 +57,7 @@ func (r *Repository) Load(ctx context.Context) (Config, int64, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, 0, err
 	}
+	cfg.Rules.normalize()
 	return cfg, ver, nil
 }
 

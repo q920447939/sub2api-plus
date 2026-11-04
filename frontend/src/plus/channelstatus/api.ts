@@ -68,6 +68,7 @@ export interface Rules {
   ttft_weight: number
   cache_weight: number
   ignored_error_categories: string[]
+  exclude_user_side_errors: boolean // 排除用户侧业务限制错误（余额不足、Key 无效等），与运维监控 SLA 一致
 }
 
 export type ProbeFormat = '' | 'anthropic' | 'openai_chat' | 'openai_responses' | 'gemini'

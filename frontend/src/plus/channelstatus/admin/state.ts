@@ -32,6 +32,9 @@ export async function loadSettings(): Promise<void> {
   settings.groups = Object.fromEntries(res.groups.map((g) => [g.id, g]))
   settings.newGroupIds = new Set(res.new_group_ids)
   settings.errorCategories = res.error_categories
+  // 后端旧数据可能是 null；复选框 v-model 绑到 null 会退化成布尔值（勾一个全选、保存时传 true）
+  res.config.rules.ignored_error_categories ??= []
+  res.config.rules.exclude_user_side_errors ??= true
   // 每个分组都补一条（默认关闭的）探测项，放在记录原始快照之前，避免一打开就显示"有未保存的修改"
   const probed = new Set(res.config.probe.groups.map((g) => g.group_id))
   for (const g of res.groups) {

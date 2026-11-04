@@ -46,6 +46,17 @@ type Rules struct {
 	TTFTWeight        float64  `json:"ttft_weight"`
 	CacheWeight       float64  `json:"cache_weight"`
 	IgnoredCategories []string `json:"ignored_error_categories"`
+	// ExcludeUserSideErrors 排除用户侧业务限制错误（余额/配额不足、Key 无效、用户并发超限等，
+	// 即运维监控 SLA 排除的 is_business_limited 且归属 client 的错误）。
+	// 平台侧失败（无可用账号、分组不支持模型等）仍计入错误。
+	ExcludeUserSideErrors bool `json:"exclude_user_side_errors"`
+}
+
+// normalize 修正 JSON 里的 null 等缺省值，保证前端拿到的是数组
+func (r *Rules) normalize() {
+	if r.IgnoredCategories == nil {
+		r.IgnoredCategories = []string{}
+	}
 }
 
 // Config 渠道状态总配置
@@ -68,6 +79,8 @@ func DefaultRules() Rules {
 		WarningErrorRate: 0.05, CriticalErrorRate: 0.20,
 		TargetTTFTMs: 3000, CriticalTTFTMs: 10000,
 		ErrorWeight: 0.60, TTFTWeight: 0.20, CacheWeight: 0.20,
+		IgnoredCategories:     []string{},
+		ExcludeUserSideErrors: true,
 	}
 }
 
@@ -85,6 +98,7 @@ func DefaultConfig() Config {
 }
 
 func (c *Config) Validate() error {
+	c.Rules.normalize()
 	switch c.RefreshSeconds {
 	case 30, 60, 120, 300:
 	default:

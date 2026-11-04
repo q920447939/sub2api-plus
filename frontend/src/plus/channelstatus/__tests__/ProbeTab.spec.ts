@@ -23,6 +23,7 @@ vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: () => {}, sh
 
 import { dirty, loadSettings, settings, validateDraft } from '../admin/state'
 import ProbeTab from '../admin/ProbeTab.vue'
+import RulesTab from '../admin/RulesTab.vue'
 
 function baseConfig(): Config {
   return {
@@ -36,7 +37,8 @@ function baseConfig(): Config {
       up_min: 80, warn_min: 50, min_sample: 50, history_min_sample: 10,
       warning_error_rate: 0.05, critical_error_rate: 0.2, target_ttft_ms: 3000, critical_ttft_ms: 10000,
       warning_cache_rate: 0, critical_cache_rate: 0, error_weight: 0.6, ttft_weight: 0.2, cache_weight: 0.2,
-      ignored_error_categories: []
+      ignored_error_categories: [],
+      exclude_user_side_errors: true
     },
     probe: {
       enabled: true, endpoint: 'https://api.example.com', fresh_minutes: 30, retry_minutes: 5,
@@ -92,5 +94,25 @@ describe('兜底探测设置', () => {
     await flushPromises()
     expect(runCalls).toHaveLength(1)
     expect((runCalls[0] as [unknown, { group_id: number }])[1].group_id).toBe(1)
+  })
+
+  it('忽略分类为 null 时：加载后是数组，勾选一个只选中一个，且不算脏', async () => {
+    const base = adminConfig
+    adminConfig = () => {
+      const c = base()
+      ;(c.config.rules as unknown as Record<string, unknown>).ignored_error_categories = null
+      c.error_categories = ['client_cancelled', 'context_limit', 'timeout']
+      return c
+    }
+    await loadSettings()
+    adminConfig = base
+    expect(settings.draft!.rules.ignored_error_categories).toEqual([])
+    expect(dirty.value).toBe(false)
+    const w = mount(RulesTab)
+    const boxes = w.findAll('input[type="checkbox"]')
+    expect(boxes.length).toBeGreaterThan(1)
+    await boxes[0].setValue(true)
+    expect(settings.draft!.rules.ignored_error_categories).toEqual([settings.errorCategories[0]])
+    expect(boxes.filter((b) => (b.element as HTMLInputElement).checked).length).toBe(1)
   })
 })

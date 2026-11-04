@@ -40,6 +40,19 @@
     </section>
 
     <section class="card p-5">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h3 class="font-semibold text-gray-900 dark:text-white">排除用户侧错误</h3>
+          <p class="text-xs text-gray-400">
+            余额/配额不足、Key 无效或过期、用户并发超限等由用户自身导致的错误，不计入请求数和错误率（与运维监控 SLA 口径一致）。
+            无可用账号、分组不支持该模型等平台侧失败仍计为错误。
+          </p>
+        </div>
+        <Toggle v-model="r.exclude_user_side_errors" />
+      </div>
+    </section>
+
+    <section class="card p-5">
       <h3 class="font-semibold text-gray-900 dark:text-white">忽略的错误分类</h3>
       <p class="mb-4 text-xs text-gray-400">勾选的分类不计入错误率（例如用户自己取消、上下文超限这类与渠道健康无关的错误）</p>
       <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -58,6 +71,7 @@ import { ERROR_CATEGORY_LABELS } from '../status'
 import type { Rules } from '../api'
 import { settings } from './state'
 import NumField from './NumField.vue'
+import Toggle from '@/components/common/Toggle.vue'
 
 const r = computed(() => settings.draft?.rules)
 

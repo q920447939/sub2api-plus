@@ -23,7 +23,12 @@ func Register(db *sql.DB, userGroup, adminGroup *gin.RouterGroup) *Service {
 		}
 		return cfg.Rules.IgnoredCategories
 	})
-	cached := NewCachedSource(passive, snapshotCacheTTL)
+	// 扣除用户侧业务限制错误（余额不足等），与运维监控 SLA 口径对齐
+	excluded := NewExclusionSource(passive, NewDBExcludedCounter(db), func(ctx context.Context) bool {
+		cfg, _, err := repo.Load(ctx)
+		return err == nil && cfg.Rules.ExcludeUserSideErrors
+	})
+	cached := NewCachedSource(excluded, snapshotCacheTTL)
 
 	// 兜底探测：只在有人查看且被动样本不足时按需触发（见 probe_policy.go）
 	prober := NewProber(ProberDeps{
@@ -48,5 +53,6 @@ func Register(db *sql.DB, userGroup, adminGroup *gin.RouterGroup) *Service {
 
 	// 自己驱动被动统计，不依赖上游 channel_monitor_enabled 开关
 	NewV2Producer(db, repo).Start()
+	NewExcludedProducer(db, repo).Start()
 	return svc
 }
