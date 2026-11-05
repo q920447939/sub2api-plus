@@ -15,6 +15,7 @@ import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
 import { plusParkAdminRoutes } from '@/plus/park/adminRoutes' // [plus]
 import { plusChannelStatusRoutes } from '@/plus/channelstatus/routes' // [plus]
+import { plusIQRoutes } from '@/plus/iq/routes' // [plus]
 
 /**
  * Route definitions with lazy loading
@@ -444,6 +445,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/slot', redirect: { path: '/points-park', query: { tab: 'grid' } } }, // [plus]
   { path: '/lottery', redirect: '/points-park' }, // [plus]
   ...plusChannelStatusRoutes, // [plus] 渠道状态（用户端 /channel-status + 管理端 /admin/channel-status）
+  ...plusIQRoutes, // [plus] 模型画廊（用户端 /model-gallery + 管理端 /admin/model-iq/*）
 
   // ==================== Admin Routes ====================
   {

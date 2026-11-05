@@ -8,6 +8,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/plus/channelstatus"
 	"github.com/Wei-Shaw/sub2api/internal/plus/checkin"
+	"github.com/Wei-Shaw/sub2api/internal/plus/iq"
 	"github.com/Wei-Shaw/sub2api/internal/plus/points"
 	"github.com/Wei-Shaw/sub2api/internal/plus/slotmachine"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -41,6 +42,19 @@ func RegisterRoutes(
 	}
 
 	registerChannelStatus(v1, plus, adminAuth, sub)
+	registerIQ(v1, plus, adminAuth, sub, apiKey)
+}
+
+// registerIQ wires 模型智商检测（鹈鹕画图画廊 + 定时检测）。
+func registerIQ(v1, userGroup *gin.RouterGroup, adminAuth gin.HandlerFunc, sub *service.SubscriptionService, apiKey *service.APIKeyService) {
+	db, err := service.PlusSQLDB(sub)
+	if err != nil {
+		log.Printf("[plus.iq] disabled: %v", err)
+		return
+	}
+	admin := v1.Group("/plus/admin")
+	admin.Use(adminAuth)
+	iq.Register(db, apiKey, v1, userGroup, admin)
 }
 
 // registerChannelStatus wires 渠道状态（读上游 V2 预聚合表，独立配置）。

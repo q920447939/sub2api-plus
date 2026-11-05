@@ -26,6 +26,7 @@ services:
       dockerfile: deploy/Dockerfile   # [plus-local] raises Node heap to 4 GB
       args:
         GOPROXY: "https://goproxy.cn,direct"
+        GOLANG_IMAGE: "golang:1.27.3-alpine"   # [plus-local] go.mod 要求 >=1.27.3，deploy/Dockerfile 默认值落后
     image: sub2api-plus:local       # tagged so repeated builds reuse the layer cache
     container_name: sub2api-plus
     restart: unless-stopped

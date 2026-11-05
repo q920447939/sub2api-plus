@@ -234,6 +234,9 @@ import { ParkNavIcon } from '@/plus/park/navIcon' // [plus]
 import { pointsParkAdminNav } from '@/plus/park/adminNav' // [plus]
 import { channelStatusNavFlag } from '@/plus/channelstatus/navFlag' // [plus]
 import { ChannelStatusNavIcon } from '@/plus/channelstatus/navIcon' // [plus]
+import { iqNavFlag, iqMenuName } from '@/plus/iq/user/navFlag' // [plus]
+import { IQNavIcon } from '@/plus/iq/navIcon' // [plus]
+import { iqAdminNav } from '@/plus/iq/adminNav' // [plus]
 
 interface NavItem {
   path: string
@@ -771,6 +774,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/channel-status', label: t('nav.channelStatus'), icon: ChannelStatusNavIcon, featureFlag: channelStatusNavFlag }, // [plus]
+    { path: '/model-gallery', label: iqMenuName.value, icon: IQNavIcon, featureFlag: iqNavFlag }, // [plus]
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
@@ -899,6 +903,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/account-usage', label: '账号用量对账', icon: ChartIcon }, // [plus]
     pointsParkAdminNav, // [plus]
+    iqAdminNav, // [plus]
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 

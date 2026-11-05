@@ -96,22 +96,26 @@ git push origin --delete plus/v0.2.15-plus.1      # 删远端（不会触发 CI�
 | 文件 | 改动 |
 |---|---|
 | `types/index.ts` | `CustomMenuItem` 加三个可选字段；新增 `KeyLaunchConfig` |
-| `components/layout/AppSidebar.vue` | 新增 `navItemForCustomMenu()`；渠道状态：用户端 `/channel-status` 一项、管理端「渠道管理」下「渠道状态设置」一项（上游 `/monitor` 未改，靠关闭上游 `channel_monitor_enabled` 隐藏） |
+| `components/layout/AppSidebar.vue` | 新增 `navItemForCustomMenu()`；渠道状态：用户端 `/channel-status` 一项、管理端「渠道管理」下「渠道状态设置」一项（上游 `/monitor` 未改，靠关闭上游 `channel_monitor_enabled` 隐藏）；智商检测：用户端「模型画廊」`/model-gallery` 一项（跟随 `iqNavFlag()`）、管理端「智商检测」分组一项（`iqAdminNav`），均带 `[plus]` 标记 |
 | `utils/embedded-url.ts` | `buildEmbeddedUrl` 加第 6 个参数 `passParams` |
 | `views/admin/SettingsView.vue` | 插入 `<PlusMenuSettings>` |
 | `views/user/CustomPageView.vue` | `plus:` URL 重定向到 `/launch/:id` |
-| `router/index.ts` | 新增 `/launch/:id`；展开 `plusChannelStatusRoutes` |
+| `router/index.ts` | 新增 `/launch/:id`；展开 `plusChannelStatusRoutes`；展开 `plusIQRoutes`（`/model-gallery`、`/admin/model-iq/*`） |
 | `i18n/locales/{zh,en}/index.ts` | 引入 `plus` 语言包 |
 | `i18n/locales/{zh,en}/admin/settings.ts` | 新增 `plusMenu.*` 键 |
 
 **fork 自己的文件（不会冲突）**
 
 ```
-backend/internal/plus/           key_launch.go / plus_handler.go / plus_routes.go
+backend/internal/plus/           key_launch.go / plus_handler.go / plus_routes.go（`registerIQ` 在此注册）
+backend/internal/plus/iq/        智商检测（鹈鹕画图）全部后端代码
+backend/migrations/258_plus_iq.sql
+frontend/src/plus/iq/            智商检测全部前端代码（user/ admin/ shared/）
 backend/internal/service/plus_bridge.go
 frontend/src/plus/               api.ts / LaunchView.vue / PlusMenuSettings.vue
 frontend/src/i18n/locales/{zh,en}/plus.ts
 deploy/                          Dockerfile.plus-local / docker-compose.plus-local.yml / .env.plus-local
+                                 （compose 显式传 GOLANG_IMAGE=golang:1.27.3-alpine，因 deploy/Dockerfile 默认值落后于 go.mod；合并上游后若 Dockerfile 已对齐可删）
 .github/workflows/plus-release.yml
 ```
 
