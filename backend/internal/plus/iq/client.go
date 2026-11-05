@@ -73,11 +73,21 @@ func (c StreamClient) Complete(ctx context.Context, req CompletionRequest) (Comp
 	for variant := 0; ; variant++ {
 		comp, err := c.do(ctx, codec, req, variant)
 		var he *HTTPError
-		if errors.As(err, &he) && he.Status == http.StatusBadRequest && variant < codec.capVariants()-1 && mentionsTokenCap(he.Message) {
+		if errors.As(err, &he) && he.Status == http.StatusBadRequest && variant < codec.capVariants()-1 && shouldRetry(codec, req, he.Message) {
 			continue
 		}
 		return comp, err
 	}
+}
+
+// codec 可自定义哪些 400 值得换写法重试（如 anthropic 的思考参数），否则按输出上限字段判断
+func shouldRetry(c codec, req CompletionRequest, msg string) bool {
+	if r, ok := c.(interface {
+		retryable(CompletionRequest, string) bool
+	}); ok {
+		return r.retryable(req, msg)
+	}
+	return mentionsTokenCap(msg)
 }
 
 func mentionsTokenCap(msg string) bool {

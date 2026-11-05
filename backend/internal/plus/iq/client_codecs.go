@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 )
 
 type codec interface {
@@ -43,14 +44,30 @@ func (anthropicCodec) path(string) string { return "/v1/messages" }
 func (anthropicCodec) headers(k string) map[string]string {
 	return map[string]string{"x-api-key": k, "anthropic-version": "2023-06-01"}
 }
-func (anthropicCodec) capVariants() int { return 1 }
-func (anthropicCodec) body(req CompletionRequest, _ int) map[string]any {
+// variant 0：adaptive 思考 + output_config.effort（新模型如 claude-opus-5-5 只接受这种）；
+// variant 1：旧写法 enabled + budget_tokens（不认识 adaptive 的老模型）。思考关闭时两者相同。
+func (anthropicCodec) capVariants() int { return 2 }
+func (anthropicCodec) body(req CompletionRequest, variant int) map[string]any {
 	b := map[string]any{"model": req.Target.Model, "max_tokens": req.MaxTokens, "stream": true, "messages": userText(req.Prompt)}
 	if budget := req.Thinking.budget(); budget > 0 {
-		b["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
 		b["max_tokens"] = req.MaxTokens + budget
+		if variant == 0 {
+			b["thinking"] = map[string]any{"type": "adaptive"}
+			b["output_config"] = map[string]any{"effort": string(req.Thinking)}
+		} else {
+			b["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
+		}
 	}
 	return b
+}
+
+// 只在思考写法被拒时才换 variant 1 重试
+func (anthropicCodec) retryable(req CompletionRequest, msg string) bool {
+	if req.Thinking.budget() <= 0 {
+		return false
+	}
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "thinking") || strings.Contains(m, "adaptive") || strings.Contains(m, "output_config") || strings.Contains(m, "effort")
 }
 
 type anthropicEvent struct {

@@ -18,11 +18,11 @@
           <Row title="启用定时检测" desc="关闭后调度器不再定时检测，已有数据保留，手动检测仍可用">
             <Toggle v-model="cfg.enabled" />
           </Row>
-          <Row title="对用户开放「模型画廊」" desc="关闭时所有人（包括管理员）的用户菜单里都不显示；管理员走「检测画廊」">
+          <Row :title="`对用户开放「${menuName}」`" :desc="`关闭时所有人（包括管理员）的用户菜单里都不显示「${menuName}」；管理员走「检测画廊」`">
             <Toggle v-model="cfg.user_enabled" data-testid="iq-user-enabled" />
           </Row>
           <Row title="用户可见分组" desc="和用户登录后在「API 密钥」里能选择的分组一致，不单独配置" />
-          <Row title="用户端菜单名称" desc="侧边栏显示的名字"><input v-model.trim="cfg.menu_name" class="input w-48" /></Row>
+          <Row title="用户端菜单名称" desc="侧边栏、页面标题和浏览器标签页都用这个名字"><input v-model.trim="cfg.menu_name" class="input w-48" /></Row>
           <Row title="用户端每个模型显示条数" desc="只显示成功样本，不超过任务的保留数"><input v-model.number="cfg.user_samples_per_task" type="number" min="1" max="100" class="input w-24" /></Row>
         </section>
 
@@ -58,12 +58,13 @@
 </template>
 
 <script setup lang="ts">
-import { defineComponent, h, onMounted, ref } from 'vue'
+import { computed, defineComponent, h, onMounted, ref } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { getConfig, saveConfig, type Config } from './api'
+import { IQ_DEFAULT_MENU_NAME, refreshIQMeta } from '../user/navFlag'
 
 // 一行设置：左侧标题 + 说明，右侧控件
 const Row = defineComponent({
@@ -86,6 +87,7 @@ const version = ref(0)
 const defaultPrompt = ref('')
 const error = ref('')
 const saving = ref(false)
+const menuName = computed(() => cfg.value?.menu_name || IQ_DEFAULT_MENU_NAME)
 
 async function load() {
   try {
@@ -104,6 +106,7 @@ async function save() {
   try {
     version.value = await saveConfig(cfg.value, version.value)
     appStore.showSuccess('已保存')
+    void refreshIQMeta(true) // 侧边栏菜单名、开关立即生效
     await load()
   } catch (e) {
     appStore.showError(extractApiErrorMessage(e, '保存失败'))

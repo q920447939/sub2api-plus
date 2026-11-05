@@ -15,7 +15,7 @@
         </p>
       </header>
 
-      <div v-if="disabled" class="card p-10 text-center text-gray-500">模型画廊暂未开放</div>
+      <div v-if="disabled" class="card p-10 text-center text-gray-500">{{ title }}暂未开放</div>
       <div v-else-if="!gallery" class="card p-10 text-center text-gray-400">{{ error || '正在加载…' }}</div>
       <div v-else-if="!gallery.groups.length" class="card p-10 text-center text-gray-400">暂无可展示的分组</div>
 

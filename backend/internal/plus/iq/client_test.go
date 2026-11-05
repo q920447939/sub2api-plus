@@ -167,3 +167,78 @@ func TestStreamClientStreamError(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// 新模型要求 adaptive 思考：首选写法就是 adaptive + output_config.effort；
+// 老模型拒绝 adaptive（400 提到 thinking）时退回 enabled + budget_tokens。
+func TestAnthropicAdaptiveThinkingFallback(t *testing.T) {
+	ok := "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"<html></html>\"}}\n\n"
+	for _, legacyOnly := range []bool{false, true} {
+		t.Run(fmt.Sprintf("legacyOnly=%v", legacyOnly), func(t *testing.T) {
+			var bodies []map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var b map[string]any
+				raw, _ := io.ReadAll(r.Body)
+				_ = json.Unmarshal(raw, &b)
+				bodies = append(bodies, b)
+				th, _ := b["thinking"].(map[string]any)
+				if legacyOnly && th["type"] == "adaptive" {
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = io.WriteString(w, `{"error":{"message":"thinking.type: Input should be 'enabled' or 'disabled'"}}`)
+					return
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, ok)
+			}))
+			defer srv.Close()
+			comp, err := StreamClient{}.Complete(context.Background(), CompletionRequest{
+				Target: Target{Endpoint: srv.URL, APIKey: "k", Model: "claude-x", Format: FormatAnthropic},
+				Prompt: "p", MaxTokens: 1000, Thinking: ThinkingHigh,
+			})
+			if err != nil || comp.Text != "<html></html>" {
+				t.Fatalf("err=%v text=%q", err, comp.Text)
+			}
+			first, _ := bodies[0]["thinking"].(map[string]any)
+			oc, _ := bodies[0]["output_config"].(map[string]any)
+			if first["type"] != "adaptive" || oc["effort"] != "high" {
+				t.Fatalf("first body = %v", bodies[0])
+			}
+			if !legacyOnly {
+				if len(bodies) != 1 {
+					t.Fatalf("expected 1 request, got %d", len(bodies))
+				}
+				return
+			}
+			if len(bodies) != 2 {
+				t.Fatalf("expected retry, got %d requests", len(bodies))
+			}
+			second, _ := bodies[1]["thinking"].(map[string]any)
+			if second["type"] != "enabled" || second["budget_tokens"].(float64) != 16384 || bodies[1]["output_config"] != nil {
+				t.Fatalf("second body = %v", bodies[1])
+			}
+		})
+	}
+}
+
+// 思考关闭时不带任何思考字段，也不会因为 400 去重试
+func TestAnthropicNoThinkingNoRetry(t *testing.T) {
+	n := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		var b map[string]any
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &b)
+		if b["thinking"] != nil || b["output_config"] != nil {
+			t.Errorf("unexpected thinking fields: %v", b)
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":{"message":"requires adaptive thinking"}}`)
+	}))
+	defer srv.Close()
+	_, err := StreamClient{}.Complete(context.Background(), CompletionRequest{
+		Target: Target{Endpoint: srv.URL, APIKey: "k", Model: "claude-x", Format: FormatAnthropic},
+		Prompt: "p", MaxTokens: 1000, Thinking: ThinkingOff,
+	})
+	if err == nil || n != 1 {
+		t.Fatalf("err=%v requests=%d", err, n)
+	}
+}

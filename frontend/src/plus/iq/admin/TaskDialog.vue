@@ -3,14 +3,20 @@
   <BaseDialog :show="open" :title="task ? '编辑检测任务' : '新增检测任务'" width="wide" @close="emit('close')">
     <div class="space-y-4 text-sm">
       <div class="grid gap-4 md:grid-cols-2">
-        <label class="block">
+        <div class="block">
           <span class="mb-1 block font-medium">分组</span>
-          <select v-model.number="form.group_id" class="input" :disabled="!!task" data-testid="iq-task-group">
-            <option :value="0" disabled>请选择分组</option>
-            <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}（{{ g.platform }}）</option>
-          </select>
+          <div class="flex gap-2">
+            <select v-model="platform" class="input w-36 flex-none" :disabled="!!task" data-testid="iq-task-platform">
+              <option value="" disabled>选择平台</option>
+              <option v-for="p in platforms" :key="p.value" :value="p.value">{{ p.label }}</option>
+            </select>
+            <select v-model.number="form.group_id" class="input" :disabled="!!task || !platform" data-testid="iq-task-group">
+              <option :value="0" disabled>{{ platform ? '请选择分组' : '先选择平台' }}</option>
+              <option v-for="g in platformGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+            </select>
+          </div>
           <span v-if="task" class="mt-1 block text-xs text-gray-400">已创建的任务不能改分组</span>
-        </label>
+        </div>
         <label class="block">
           <span class="mb-1 block font-medium">检测模型</span>
           <div class="flex gap-2">
@@ -119,6 +125,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { GROUP_PLATFORM_OPTIONS } from '@/constants/platforms'
 import {
   createTask, getKeyChoices, listModels, testTask, updateTask,
   type GroupInfo, type KeyChoices, type TaskInput, type TaskView, type TestResult
@@ -141,6 +148,19 @@ const loadingModels = ref(false)
 const testing = ref(false)
 const saving = ref(false)
 const testResult = ref<TestResult | null>(null)
+// 先选平台再选分组（和分组管理一致）；只列出有分组的平台，名称沿用上游平台显示名
+const platform = ref('')
+const platforms = computed(() => {
+  const present = new Set(props.groups.map((g) => g.platform))
+  const known = GROUP_PLATFORM_OPTIONS.filter((o) => present.has(o.value))
+  const extra = [...present].filter((p) => !known.some((o) => o.value === p)).map((p) => ({ value: p, label: p }))
+  return [...known, ...extra]
+})
+const platformGroups = computed(() => props.groups.filter((g) => g.platform === platform.value))
+const platformOf = (groupId: number) => props.groups.find((g) => g.id === groupId)?.platform ?? ''
+watch(platform, (p) => {
+  if (form.group_id && platformOf(form.group_id) !== p) form.group_id = 0
+})
 const dailyRuns = computed(() => (form.interval_minutes > 0 ? Math.floor(1440 / form.interval_minutes) : 0))
 
 function blank(): TaskInput {
@@ -163,6 +183,7 @@ watch(
           thinking: t.thinking, interval_minutes: t.interval_minutes, retention: t.retention, enabled: t.enabled
         }
       : { ...blank(), group_id: props.presetGroupId ?? 0, interval_minutes: props.defaults.interval, retention: props.defaults.retention })
+    platform.value = form.group_id ? platformOf(form.group_id) : platforms.value.length === 1 ? platforms.value[0].value : ''
     void loadChoices()
   }
 )
