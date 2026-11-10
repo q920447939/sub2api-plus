@@ -90,17 +90,22 @@ git push origin --delete plus/v0.2.15-plus.1      # 删远端（不会触发 CI�
 | `internal/handler/admin/setting_handler_update.go` | 菜单 URL 校验加 `plus:` 分支 |
 | `internal/server/router.go` | import `plus`，`registerRoutes` 末尾加 `plus.RegisterRoutes(...)` |
 | `internal/service/setting_public.go` | `filterUserVisibleMenuItems` 剥离 `plus_config`；`parseCustomMenuItemURLs` 支持 `plus:` |
+| `internal/service/gateway_scheduling.go` | 上游调度台钩子：`listSchedulableAccounts`、`isAccountInGroup` 两个函数声明改名为 `xxxUpstream`（原名在 `plus_dispatch_hook.go` 里包一层）。冲突时取上游版本，再把这两行声明改回 `xxxUpstream` |
+| `internal/service/openai_gateway_scheduling.go` | 同上：`listSchedulableAccounts`、`openAIAccountMatchesSchedulingGroup` 改名为 `xxxUpstream` |
+| `internal/service/gemini_messages_compat_service.go` | 同上：`listSchedulableAccountsOnce`、`tryStickySessionHit` 改名为 `xxxUpstream` |
+| `go.mod` / `go.sum` | 新增依赖 `github.com/Ikaleio/lm-detector/sdk/go`（数字指纹，MIT），连带 `klauspost/compress` 1.18.2 → 1.18.4 |
 
 **前端**
 
 | 文件 | 改动 |
 |---|---|
 | `types/index.ts` | `CustomMenuItem` 加三个可选字段；新增 `KeyLaunchConfig` |
-| `components/layout/AppSidebar.vue` | 新增 `navItemForCustomMenu()`；渠道状态：用户端 `/channel-status` 一项、管理端「渠道管理」下「渠道状态设置」一项（上游 `/monitor` 未改，靠关闭上游 `channel_monitor_enabled` 隐藏）；智商检测：用户端「模型画廊」`/model-gallery` 一项（跟随 `iqNavFlag()`）、管理端「智商检测」分组一项（`iqAdminNav`），均带 `[plus]` 标记 |
+| `components/layout/AppSidebar.vue` | 新增 `navItemForCustomMenu()`；渠道状态：用户端 `/channel-status` 一项、管理端「渠道管理」下「渠道状态设置」一项（上游 `/monitor` 未改，靠关闭上游 `channel_monitor_enabled` 隐藏）；智商检测：用户端「模型画廊」`/model-gallery` 一项（跟随 `iqNavFlag()`）、管理端「智商检测」分组一项（`iqAdminNav`）；管理端「上游调度台」分组一项（`dispatchAdminNav`），均带 `[plus]` 标记 |
 | `utils/embedded-url.ts` | `buildEmbeddedUrl` 加第 6 个参数 `passParams` |
 | `views/admin/SettingsView.vue` | 插入 `<PlusMenuSettings>` |
 | `views/user/CustomPageView.vue` | `plus:` URL 重定向到 `/launch/:id` |
-| `router/index.ts` | 新增 `/launch/:id`；展开 `plusChannelStatusRoutes`；展开 `plusIQRoutes`（`/model-gallery`、`/admin/model-iq/*`） |
+| `router/index.ts` | 新增 `/launch/:id`；展开 `plusChannelStatusRoutes`；展开 `plusIQRoutes`（`/model-gallery`、`/admin/model-iq/*`）；展开 `plusDispatchRoutes`（`/admin/dispatch/*`） |
+| `views/admin/AccountsView.vue` | 账号名下面加 `<DispatchAccountBadge>`（上游调度台的「已暂停 / ×0.3」标签），一个 import + 一行模板 |
 | `i18n/locales/{zh,en}/index.ts` | 引入 `plus` 语言包 |
 | `i18n/locales/{zh,en}/admin/settings.ts` | 新增 `plusMenu.*` 键 |
 
@@ -110,6 +115,10 @@ git push origin --delete plus/v0.2.15-plus.1      # 删远端（不会触发 CI�
 backend/internal/plus/           key_launch.go / plus_handler.go / plus_routes.go（`registerIQ` 在此注册）
 backend/internal/plus/iq/        智商检测（鹈鹕画图）全部后端代码
 backend/migrations/258_plus_iq.sql
+backend/internal/plus/dispatch/     上游调度台全部后端代码（hook/ 是选号钩子引擎）
+backend/internal/service/plus_dispatch_hook.go   选号钩子（6 个改名函数的原名实现）
+backend/migrations/259_plus_dispatch.sql
+frontend/src/plus/dispatch/         上游调度台全部前端代码
 frontend/src/plus/iq/            智商检测全部前端代码（user/ admin/ shared/）
 backend/internal/service/plus_bridge.go
 frontend/src/plus/               api.ts / LaunchView.vue / PlusMenuSettings.vue

@@ -1497,7 +1497,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	return nil, ErrNoAvailableAccounts
 }
 
-func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string) ([]Account, error) {
+func (s *OpenAIGatewayService) listSchedulableAccountsUpstream(ctx context.Context, groupID *int64, platform string) ([]Account, error) { // [plus] 原名在 plus_dispatch_hook.go
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, false)
@@ -1657,7 +1657,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	return latest
 }
 
-func (s *OpenAIGatewayService) openAIAccountMatchesSchedulingGroup(account *Account, groupID *int64) bool {
+func (s *OpenAIGatewayService) openAIAccountMatchesSchedulingGroupUpstream(account *Account, groupID *int64) bool { // [plus] 原名在 plus_dispatch_hook.go
 	if s != nil && s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		return account != nil
 	}

@@ -1011,7 +1011,7 @@ func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, gr
 	return PlatformAnthropic, false, nil
 }
 
-func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
+func (s *GatewayService) listSchedulableAccountsUpstream(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) { // [plus] 原名在 plus_dispatch_hook.go
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
@@ -1174,7 +1174,7 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 
 // isAccountInGroup checks if the account belongs to the specified group.
 // When groupID is nil, returns true only for ungrouped accounts (no group assignments).
-func (s *GatewayService) isAccountInGroup(account *Account, groupID *int64) bool {
+func (s *GatewayService) isAccountInGroupUpstream(account *Account, groupID *int64) bool { // [plus] 原名在 plus_dispatch_hook.go
 	if account == nil {
 		return false
 	}

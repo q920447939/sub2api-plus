@@ -237,6 +237,7 @@ import { ChannelStatusNavIcon } from '@/plus/channelstatus/navIcon' // [plus]
 import { iqNavFlag, iqMenuName } from '@/plus/iq/user/navFlag' // [plus]
 import { IQNavIcon } from '@/plus/iq/navIcon' // [plus]
 import { iqAdminNav } from '@/plus/iq/adminNav' // [plus]
+import { dispatchAdminNav } from '@/plus/dispatch/adminNav' // [plus]
 
 interface NavItem {
   path: string
@@ -904,6 +905,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/account-usage', label: '账号用量对账', icon: ChartIcon }, // [plus]
     pointsParkAdminNav, // [plus]
     iqAdminNav, // [plus]
+    dispatchAdminNav, // [plus]
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 

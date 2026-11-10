@@ -8,6 +8,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/plus/channelstatus"
 	"github.com/Wei-Shaw/sub2api/internal/plus/checkin"
+	"github.com/Wei-Shaw/sub2api/internal/plus/dispatch"
 	"github.com/Wei-Shaw/sub2api/internal/plus/iq"
 	"github.com/Wei-Shaw/sub2api/internal/plus/points"
 	"github.com/Wei-Shaw/sub2api/internal/plus/slotmachine"
@@ -43,6 +44,19 @@ func RegisterRoutes(
 
 	registerChannelStatus(v1, plus, adminAuth, sub)
 	registerIQ(v1, plus, adminAuth, sub, apiKey)
+	registerDispatch(v1, adminAuth, sub)
+}
+
+// registerDispatch wires 上游调度台（检测 + 判定 + 待处理 + 调度调整 + 操作记录），只有管理端接口。
+func registerDispatch(v1 *gin.RouterGroup, adminAuth gin.HandlerFunc, sub *service.SubscriptionService) {
+	db, err := service.PlusSQLDB(sub)
+	if err != nil {
+		log.Printf("[plus.dispatch] disabled: %v", err)
+		return
+	}
+	admin := v1.Group("/plus/admin")
+	admin.Use(adminAuth)
+	dispatch.Register(db, admin)
 }
 
 // registerIQ wires 模型智商检测（鹈鹕画图画廊 + 定时检测）。

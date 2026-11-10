@@ -201,7 +201,7 @@ func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx conte
 //
 // tryStickySessionHit attempts to get account from sticky session.
 // Returns account if hit and usable; clears session and returns nil if account unavailable.
-func (s *GeminiMessagesCompatService) tryStickySessionHit(
+func (s *GeminiMessagesCompatService) tryStickySessionHitUpstream( // [plus] 原名在 plus_dispatch_hook.go
 	ctx context.Context,
 	groupID *int64,
 	sessionHash, cacheKey, requestedModel string,
@@ -455,7 +455,7 @@ func (s *GeminiMessagesCompatService) hydrateSelectedAccount(ctx context.Context
 	return hydrated, nil
 }
 
-func (s *GeminiMessagesCompatService) listSchedulableAccountsOnce(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, error) {
+func (s *GeminiMessagesCompatService) listSchedulableAccountsOnceUpstream(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, error) { // [plus] 原名在 plus_dispatch_hook.go
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		return accounts, err
