@@ -5,12 +5,14 @@ go 1.27.3
 require (
 	entgo.io/ent v0.14.5
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/Ikaleio/lm-detector/sdk/go v0.2.0
+	github.com/MoeForge/moego v0.1.0-alpha.1
 	github.com/alibabacloud-go/captcha-20230305 v1.1.3
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.1.13
 	github.com/alibabacloud-go/tea v1.3.13
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/alitto/pond/v2 v2.6.2
-	github.com/andybalholm/brotli v1.2.0
+	github.com/andybalholm/brotli v1.2.7
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.10
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.10
@@ -28,7 +30,7 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	github.com/imroc/req/v3 v3.59.0
-	github.com/klauspost/compress v1.18.4
+	github.com/klauspost/compress v1.20.2
 	github.com/lib/pq v1.10.9
 	github.com/modelcontextprotocol/go-sdk v1.4.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -69,7 +71,6 @@ require (
 	ariga.io/atlas v0.32.1-0.20250325101103-175b25e1c1b9 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
-	github.com/Ikaleio/lm-detector/sdk/go v0.2.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/alibabacloud-go/alibabacloud-gateway-spi v0.0.5 // indirect
