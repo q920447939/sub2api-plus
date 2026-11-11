@@ -153,12 +153,12 @@ const trafficLines = computed<ChartLine[]>(() => {
   if (!d || d.graded) return []
   const out: ChartLine[] = (d.lines ?? []).map((l: any, i: number) => ({
     id: l.account_id, name: l.name, color: PALETTE[i % PALETTE.length], values: l.values,
-    width: l.account_id === d.highlight ? 2.8 : 1.3, opacity: l.account_id === d.highlight ? 1 : 0.55
+    width: l.account_id === d.highlight ? 2.6 : 1.4, hidden: l.account_id !== d.highlight
   }))
   if (d.reference && !d.daily) {
-    out.push({ id: '_ref', name: `${highlightName.value} 的参照（${d.reference.label}）`, color: '#334155', dashed: true, values: d.reference.values })
-    out.push({ id: '_warn', name: '超过就算可疑', color: '#f59e0b', dashed: true, width: 1.1, values: d.reference.warn })
-    out.push({ id: '_bad', name: '超过就算异常', color: '#dc2626', dashed: true, width: 1.1, values: d.reference.bad })
+    out.push({ id: '_ref', name: '参照', color: '#64748b', dashed: true, width: 1.4, values: d.reference.values })
+    out.push({ id: '_warn', name: '可疑线', color: '#f59e0b', dashed: true, width: 1, values: d.reference.warn, hidden: true })
+    out.push({ id: '_bad', name: '异常线', color: '#dc2626', dashed: true, width: 1, values: d.reference.bad })
   }
   return out
 })

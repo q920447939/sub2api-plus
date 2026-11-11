@@ -1,62 +1,17 @@
-<!-- [plus] 折线 / 堆叠面积图（SVG，无依赖）：鼠标移上去看每个时间点各条线的值，点图例隐藏某条线 -->
+<!-- [plus] 折线 / 堆叠面积图：用项目统一的 chart.js（vue-chartjs），悬停显示同一时刻各条线的值，点图例显示 / 隐藏 -->
 <template>
-  <div>
-    <div v-if="legend" class="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-      <button
-        v-for="l in lines"
-        :key="l.id"
-        type="button"
-        class="inline-flex items-center gap-1.5"
-        :class="hidden[l.id] ? 'opacity-30' : ''"
-        @click="hidden[l.id] = !hidden[l.id]"
-      >
-        <i class="inline-block w-4" :style="{ borderTop: `${l.width && l.width > 2 ? 3 : 2}px ${l.dashed ? 'dashed' : 'solid'} ${l.color}` }" />
-        {{ l.name }}
-      </button>
-      <span v-if="lines.length > 1" class="text-gray-400">（点图例可隐藏）</span>
-    </div>
-    <div v-if="!hasData" class="py-8 text-center text-sm text-gray-400">没有数据</div>
-    <svg v-else :viewBox="`0 0 ${W} ${H}`" class="block w-full" @mousemove="hover" @mouseleave="hi = -1">
-      <g v-for="(t, k) in yTicks" :key="'y' + k">
-        <line :x1="L" :x2="W - R" :y1="y(t)" :y2="y(t)" stroke="#e2e8f0" />
-        <text :x="L - 6" :y="y(t) + 4" font-size="11" text-anchor="end" fill="#94a3b8">{{ fmt(t) }}</text>
-      </g>
-      <text v-for="(i, k) in xTicks" :key="'x' + k" :x="x(i)" :y="H - 8" font-size="11" text-anchor="middle" fill="#94a3b8">{{ labels[i] }}</text>
-      <template v-if="stacked">
-        <path v-for="a in areas" :key="'a' + a.id" :d="a.d" :fill="a.color" fill-opacity="0.75" stroke="#fff" stroke-width="0.5" />
-      </template>
-      <template v-else>
-        <polyline
-          v-for="l in shown"
-          :key="'l' + l.id"
-          :points="points(l.values)"
-          fill="none"
-          :stroke="l.color"
-          :stroke-width="l.width ?? 1.6"
-          :stroke-opacity="l.opacity ?? 1"
-          :stroke-dasharray="l.dashed ? '5 4' : undefined"
-        />
-      </template>
-      <g v-for="(m, k) in markers" :key="'m' + k">
-        <line :x1="x(m.index)" :x2="x(m.index)" :y1="T" :y2="H - B" stroke="#334155" stroke-dasharray="3 3" />
-        <text :x="x(m.index) + 4" :y="T + 12" font-size="11" fill="#334155">{{ m.label }}</text>
-      </g>
-      <line v-if="hi >= 0" :x1="x(hi)" :x2="x(hi)" :y1="T" :y2="H - B" stroke="#334155" stroke-opacity="0.4" />
-    </svg>
-    <div v-if="hasData" class="mt-1 min-h-[34px] rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs leading-6 dark:border-dark-700 dark:bg-dark-800">
-      <template v-if="hi >= 0">
-        <b class="mr-2">{{ labels[hi] }}</b>
-        <span v-for="l in shown" :key="'t' + l.id" class="mr-3 whitespace-nowrap" :style="{ color: l.color }">
-          {{ l.name }}：{{ l.values[hi] == null ? '—' : fmt(l.values[hi] as number) }}
-        </span>
-      </template>
-      <span v-else class="text-gray-400">把鼠标移到图上，看每个时间点各条线的数值</span>
-    </div>
+  <div :style="{ height: `${height}px` }">
+    <div v-if="!hasData" class="flex h-full items-center justify-center text-sm text-gray-400">暂无数据</div>
+    <Line v-else :data="chartData" :options="options" :plugins="[markerPlugin]" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed } from 'vue'
+import { Chart as ChartJS, CategoryScale, Filler, Legend, LinearScale, LineElement, PointElement, Tooltip, type Plugin } from 'chart.js'
+import { Line } from 'vue-chartjs'
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
 
 export interface ChartLine {
   id: string | number
@@ -66,6 +21,8 @@ export interface ChartLine {
   width?: number
   dashed?: boolean
   opacity?: number
+  /** 默认隐藏，点图例再显示 */
+  hidden?: boolean
 }
 
 const props = withDefaults(
@@ -82,68 +39,88 @@ const props = withDefaults(
   { fmt: (v: number) => String(Math.round(v * 10) / 10), stacked: false, legend: true, markers: () => [], height: 260, zeroBased: false }
 )
 
-const W = 900
-const L = 58
-const R = 14
-const T = 12
-const B = 28
-const H = computed(() => props.height)
-const hidden = reactive<Record<string, boolean>>({})
-const hi = ref(-1)
+const dark = computed(() => document.documentElement.classList.contains('dark'))
+const text = computed(() => (dark.value ? '#9ca3af' : '#6b7280'))
+const grid = computed(() => (dark.value ? '#374151' : '#f1f5f9'))
 
-const shown = computed(() => props.lines.filter((l) => !hidden[l.id]))
-const n = computed(() => props.labels.length)
-const all = computed(() => shown.value.flatMap((l) => l.values).filter((v): v is number => v != null && Number.isFinite(v)))
-const hasData = computed(() => all.value.length > 0)
+const hasData = computed(() => props.lines.some((l) => l.values.some((v) => v != null && Number.isFinite(v))))
 
-const range = computed(() => {
-  if (props.stacked) return [0, 100]
-  let mn = Math.min(...all.value)
-  let mx = Math.max(...all.value)
-  if (props.zeroBased || (mn > 0 && mn < mx * 0.35)) mn = 0
-  const pad = (mx - mn) * 0.08 || 1
-  return [Math.max(0, mn - pad), mx + pad]
-})
-const x = (i: number) => L + (n.value <= 1 ? 0 : (i / (n.value - 1)) * (W - L - R))
-const y = (v: number) => {
-  const [mn, mx] = range.value
-  return T + (1 - (v - mn) / (mx - mn || 1)) * (H.value - T - B)
-}
-const yTicks = computed(() => {
-  const [mn, mx] = range.value
-  return [0, 1, 2, 3, 4].map((k) => mn + ((mx - mn) * k) / 4)
-})
-const xTicks = computed(() => {
-  const step = Math.max(1, Math.ceil(n.value / 8))
-  const out: number[] = []
-  for (let i = 0; i < n.value; i += step) out.push(i)
-  return out
-})
-
-function points(vals: (number | null)[]): string {
-  return vals
-    .map((v, i) => (v == null ? '' : `${x(i).toFixed(1)},${y(v).toFixed(1)}`))
-    .filter(Boolean)
-    .join(' ')
+const alpha = (hex: string, a: number) => {
+  const n = Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, '0')
+  return /^#[0-9a-f]{6}$/i.test(hex) ? hex + n : hex
 }
 
-// 堆叠面积：每条线的值是份额（%），按顺序叠起来
-const areas = computed(() => {
-  const base = new Array(n.value).fill(0)
-  return shown.value.map((l) => {
-    const lower = [...base]
-    const upper = l.values.map((v, i) => (base[i] += v ?? 0))
-    const top = upper.map((v, i) => `${x(i).toFixed(1)},${y(Math.min(100, v)).toFixed(1)}`)
-    const bottom = lower.map((v, i) => `${x(i).toFixed(1)},${y(Math.min(100, v)).toFixed(1)}`).reverse()
-    return { id: l.id, color: l.color, d: `M${top.join(' L')} L${bottom.join(' L')} Z` }
-  })
-})
+const chartData = computed(() => ({
+  labels: props.labels,
+  datasets: props.lines.map((l) => ({
+    label: l.name,
+    data: props.stacked ? l.values.map((v) => v ?? 0) : l.values,
+    hidden: !!l.hidden,
+    borderColor: alpha(l.color, l.opacity ?? 1),
+    backgroundColor: props.stacked ? alpha(l.color, 0.55) : l.color,
+    borderWidth: props.stacked ? 1 : l.width ?? 1.8,
+    borderDash: l.dashed ? [5, 4] : undefined,
+    fill: props.stacked ? (props.lines.indexOf(l) === 0 ? 'origin' : '-1') : false,
+    tension: props.stacked ? 0 : 0.3,
+    spanGaps: true,
+    // 点很少时（新账号、检测频率低）画出数据点，否则一两个点看不见
+    pointRadius: !props.stacked && l.values.filter((v) => v != null).length <= 12 ? 2.5 : 0,
+    pointHoverRadius: l.dashed ? 0 : 4
+  }))
+}))
 
-function hover(e: MouseEvent) {
-  const el = e.currentTarget as SVGSVGElement
-  const r = el.getBoundingClientRect()
-  const xv = ((e.clientX - r.left) / r.width) * W
-  const i = Math.round(((xv - L) / (W - L - R)) * (n.value - 1))
-  hi.value = Math.max(0, Math.min(n.value - 1, i))
+const options = computed(() => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: false as const,
+  interaction: { intersect: false, mode: 'index' as const },
+  plugins: {
+    legend: {
+      display: props.legend,
+      position: 'top' as const,
+      align: 'start' as const,
+      labels: { color: text.value, usePointStyle: true, pointStyle: 'line', boxWidth: 18, padding: 14, font: { size: 11 } }
+    },
+    tooltip: {
+      itemSort: (a: any, b: any) => (b.raw ?? -Infinity) - (a.raw ?? -Infinity),
+      callbacks: {
+        label: (c: any) => (c.raw == null ? `${c.dataset.label}：—` : `${c.dataset.label}：${props.fmt(Number(c.raw))}`)
+      }
+    }
+  },
+  scales: {
+    x: { grid: { display: false }, ticks: { color: text.value, font: { size: 10 }, maxRotation: 0, autoSkipPadding: 16 } },
+    y: {
+      stacked: props.stacked,
+      beginAtZero: props.zeroBased || props.stacked,
+      max: props.stacked ? 100 : undefined,
+      grid: { color: grid.value },
+      border: { display: false },
+      ticks: { color: text.value, font: { size: 10 }, maxTicksLimit: 5, callback: (v: string | number) => props.fmt(Number(v)) }
+    }
+  }
+}))
+
+// 竖线标记（比如「调整」时刻）
+const markerPlugin: Plugin<'line'> = {
+  id: 'plusMarkers',
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea, scales } = chart
+    for (const m of props.markers) {
+      const x = scales.x.getPixelForValue(m.index)
+      ctx.save()
+      ctx.strokeStyle = text.value
+      ctx.setLineDash([3, 3])
+      ctx.beginPath()
+      ctx.moveTo(x, chartArea.top)
+      ctx.lineTo(x, chartArea.bottom)
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.fillStyle = text.value
+      ctx.font = '11px sans-serif'
+      ctx.fillText(m.label, x + 4, chartArea.top + 11)
+      ctx.restore()
+    }
+  }
 }
 </script>

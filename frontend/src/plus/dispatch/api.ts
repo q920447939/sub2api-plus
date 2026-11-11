@@ -137,7 +137,7 @@ export interface Meta {
   platforms: string[]
   models: Record<string, { model: string; share: number }[]>
   groups: { id: number; name: string; platform: string; account_ids: number[] }[]
-  accounts: { id: number; name: string; platform: string; group_ids: number[]; direct: boolean; direct_why: string; base_url: string }[]
+  accounts: { id: number; name: string; platform: string; group_ids: number[]; direct: boolean; direct_why: string; base_url: string; serving: boolean }[]
   dimensions: Dimension[]
   items: Item[]
   plans: Plan[]
@@ -154,6 +154,7 @@ export interface DimResult {
   short: string
   long: string
   muted?: boolean
+  no_ref?: boolean
 }
 
 export interface Adjustment {
@@ -236,6 +237,7 @@ export interface Overview {
   coverage_gaps: { dimension: string; accounts: string[] }[] | null
   as_of: string
   adjustments: number
+  hidden: number
 }
 
 export interface Verdict {
@@ -325,7 +327,7 @@ export const dispatchApi = {
   previewPlan: (p: Partial<Plan>) => post<{ rows: PlanCoverRow[]; targets: number; requests_per_day: number }>('/plans/preview', p),
   runPlan: (id: number) => post<{ queued: number }>(`/plans/${id}/run`),
 
-  overview: (platform = '') => get<Overview>('/overview', { platform }),
+  overview: (platform = '', all = false) => get<Overview>('/overview', { platform, all: all ? 1 : undefined }),
   account: (id: number, group: number, model = '') => get<any>(`/accounts/${id}`, { group, model }),
   checkup: (id: number, body: { item_ids: number[]; models: string[] }) => post<{ queued: number; skipped: string[] | null }>(`/accounts/${id}/checkup`, body),
   compare: (q: { group: number; model: string; item: number; range: string; highlight?: number }) => get<any>('/compare', q),

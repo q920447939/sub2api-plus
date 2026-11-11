@@ -28,7 +28,7 @@
 
 ## 判定
 
-- **流量统计**：从 `usage_logs` / `ops_error_logs` 汇总到 `plus_dispatch_traffic_hourly`（每 5 分钟重算最近两小时），「现在」取最近 60 分钟滚动值。和参照比：参照按回退链取第一个可用的——同组同模型其他账号 → 全站同平台同模型其他账号 → 自己过去 7 天同一时段 → 固定值；可比的少于 N 家就换下一个。超过阈值并持续 T 分钟才算。用户侧错误（余额不足等）和 429 不算报错；429 单独算「限流率」。
+- **流量统计**：从 `usage_logs` / `ops_error_logs` 汇总到 `plus_dispatch_traffic_hourly`（每 5 分钟重算最近两小时），「现在」取最近 60 分钟滚动值。和参照比：参照按回退链取第一个可用的——同组同模型其他账号 → 全站同平台同模型其他账号 → 自己过去 7 天同一时段 → 固定值；可比的少于 N 家（默认 1）就换下一个；报错率 / 限流率最后按绝对值兜底。有数据但没有任何参照时显示「无参照」和当前值，不算「数据不足」。超过阈值并持续 T 分钟才算。用户侧错误（余额不足等）和 429 不算报错；429 单独算「限流率」。
 - **模型指纹识别**：lm-detector（MIT）出 3 道随机整数题，用我们自己的多协议客户端直连账号发请求（所以 Gemini 原生协议也能测），再用 SDK 打分。连续 N 次识别成别的模型判异常；置信度低的不计入。参考库按模型版本收录，库里没有的模型在计划里置灰。参考库首次使用时从 lm.ikale.io 下载（约 3.6 MB），缓存在 `/app/data/plus_lmfpd/`。
 - **判分题**：近 N 次答对次数，固定阈值或和同组其他账号比。判分方式：数值相等 / 完全一致 / 包含 / 正则；多个答案命中任一个就算对。
 - 请求出错不计入判定；同一项连续出错 N 次进待处理「检测请求连续失败」。
@@ -72,5 +72,6 @@ backend/internal/plus/dispatch/
   hook/                                选号钩子引擎（不依赖 service 包）
 backend/internal/service/plus_dispatch_hook.go   接到上游选号的 6 个函数
 backend/migrations/259_plus_dispatch.sql
+backend/migrations/260_plus_dispatch_reference_defaults.sql   流量类参照默认值（至少 1 家可比；报错率 / 限流率按绝对值兜底）
 frontend/src/plus/dispatch/            views/ config/ shared/
 ```

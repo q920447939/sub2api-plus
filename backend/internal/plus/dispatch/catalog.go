@@ -30,7 +30,7 @@ type CatAccount struct {
 	DirectWhy   string    `json:"direct_why"` // 不能直连的原因
 }
 
-// Serving 是否在正常接客（启用且可调度）
+// Serving 是否参与调度（启用且调度已开启）
 func (a *CatAccount) Serving() bool { return a.Status == "active" && a.Schedulable }
 
 // CatGroup 分组（只读上游 groups）

@@ -139,7 +139,7 @@ func (trafficScope) Match(t ScopeTarget, s PlanScope) (bool, string) {
 	case a.Status != "active":
 		return false, "账号已停用"
 	case !a.Serving():
-		return false, "账号不可调度"
+		return false, "调度已关闭"
 	case t.MaxShare < min:
 		return false, fmt.Sprintf("流量占比 %.1f%%，低于 %g%%", t.MaxShare, min)
 	case !accountModelTraffic(t.Traffic, a, t.Model):

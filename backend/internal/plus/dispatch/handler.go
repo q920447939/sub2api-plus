@@ -297,7 +297,7 @@ func (h *Handler) runPlan(c *gin.Context) {
 // ---------- 查询 ----------
 
 func (h *Handler) overview(c *gin.Context) {
-	v, err := h.Query.Overview(c.Request.Context(), c.Query("platform"))
+	v, err := h.Query.Overview(c.Request.Context(), c.Query("platform"), c.Query("all") == "1")
 	ok(c, v, err)
 }
 

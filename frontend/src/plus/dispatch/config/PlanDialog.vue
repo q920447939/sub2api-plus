@@ -61,7 +61,7 @@
 
         <div>
           <label class="input-label">排除账号</label>
-          <AccountPicker v-model="form.exclude_ids" :platform="form.platform" placeholder="不测的账号（可选）" />
+          <AccountPicker v-model="form.exclude_ids" :platform="form.platform" />
         </div>
 
         <div class="grid gap-4 sm:grid-cols-3">

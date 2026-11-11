@@ -200,7 +200,17 @@ type DimResult struct {
 	ItemID      int64  `json:"item_id,omitempty"`
 	Short       string `json:"short"`
 	Long        string `json:"long"`
-	Muted       bool   `json:"muted,omitempty"` // 已标误报，按正常处理
+	Muted       bool   `json:"muted,omitempty"`  // 已标误报，按正常处理
+	NoRef       bool   `json:"no_ref,omitempty"` // 有数据但没有可比的参照
+}
+
+// verdictWeight 取「最差」时的排序：同为数据不足时，有数值的（比如有流量但没参照）排在没流量的前面
+func verdictWeight(v StoredVerdict) float64 {
+	w := v.Level.Rank()
+	if v.Level == LevelFew && v.Value != nil {
+		w += 0.1
+	}
+	return w
 }
 
 // aggregateDim 维度结论
@@ -208,6 +218,7 @@ func aggregateDim(reg *Registry, st Setup, d Dimension, vs []StoredVerdict) (Dim
 	res := DimResult{DimensionID: d.ID, Level: LevelNone}
 	var problems []StoredVerdict
 	var info *StoredVerdict
+	best := 0.0
 	for i := range vs {
 		v := vs[i]
 		it := st.item(v.ItemID)
@@ -223,8 +234,10 @@ func aggregateDim(reg *Registry, st Setup, d Dimension, vs []StoredVerdict) (Dim
 		if v.Level.Problem() {
 			problems = append(problems, v)
 		}
-		if v.Level.Rank() > res.Level.Rank() || res.ItemID == 0 && v.Level.Rank() >= res.Level.Rank() {
+		if w := verdictWeight(v); w > best || res.ItemID == 0 && w >= best {
+			best = w
 			res.Level, res.Model, res.ItemID, res.Short, res.Long = v.Level, v.Model, v.ItemID, v.Short, v.Long
+			res.NoRef = v.Evidence["no_reference"] == true
 		}
 	}
 	if res.ItemID == 0 && info != nil {

@@ -61,14 +61,14 @@
                   <td class="whitespace-nowrap px-3 py-2.5">
                     <router-link class="font-semibold text-primary-700 hover:underline" :to="accountLink(g.id, r.account_id)">{{ r.name }}</router-link>
                     <span v-if="r.is_new" class="ml-1 rounded bg-violet-50 px-1 text-[11px] text-violet-700">新接入</span>
-                    <span v-if="!r.serving" class="ml-1 rounded bg-gray-100 px-1 text-[11px] text-gray-500">未接客</span>
+                    <span v-if="!r.serving" class="ml-1 rounded bg-gray-100 px-1 text-[11px] text-gray-500">调度已关闭</span>
                     <div class="text-[11px] text-gray-400">倍率 {{ r.rate }}<template v-if="r.also_in?.length"> · 也在 {{ r.also_in.join('、') }}</template></div>
                   </td>
                   <td class="px-3 py-2.5"><ShareBar :value="r.share" /></td>
                   <td class="min-w-[240px] max-w-[320px] px-3 py-2.5 text-xs leading-5" :class="r.worst === 'bad' ? 'text-red-600' : r.worst === 'warn' ? 'text-amber-700' : 'text-gray-600 dark:text-dark-200'">{{ r.one_line }}</td>
                   <td v-for="d in dims" :key="d.id" class="min-w-[104px] cursor-pointer px-3 py-2.5 hover:bg-primary-50/60 dark:hover:bg-dark-700" :title="r.dims[d.id]?.long" @click="router.push(accountLink(g.id, r.account_id, d.id))">
                     <template v-if="r.dims[d.id]">
-                      <LevelPill :level="r.dims[d.id].level" :text="r.dims[d.id].level === 'info' ? r.dims[d.id].short : r.dims[d.id].muted ? '正常（已标误报）' : undefined" />
+                      <LevelPill :level="r.dims[d.id].level" :text="r.dims[d.id].level === 'info' ? r.dims[d.id].short : r.dims[d.id].muted ? '正常（已标误报）' : r.dims[d.id].no_ref ? '无参照' : undefined" />
                       <div v-if="r.dims[d.id].level !== 'info'" class="mt-1 max-w-[150px] truncate text-[11px] text-gray-500">{{ cellText(r.dims[d.id]) }}</div>
                     </template>
                   </td>
@@ -88,6 +88,10 @@
             </table>
           </div>
         </section>
+        <div v-if="data.hidden || showAll" class="text-center text-xs text-gray-400">
+          <template v-if="!showAll">另有 {{ data.hidden }} 个账号调度已关闭，未列出 · </template>
+          <button type="button" class="text-primary-600 hover:underline" @click="showAll = !showAll; load()">{{ showAll ? '隐藏调度已关闭的账号' : '显示' }}</button>
+        </div>
       </template>
     </div>
     <AdjustDialog :target="adjustTarget" @close="adjustTarget = null" @done="adjustTarget = null; load()" />
@@ -118,6 +122,7 @@ const data = ref<Overview | null>(null)
 const error = ref('')
 const LEVEL_OPTIONS = [{ value: '', label: '全部状态' }, { value: 'bad', label: '异常' }, { value: 'warn', label: '可疑' }, { value: 'ok', label: '正常' }, { value: 'few', label: '暂无结论' }]
 const q = reactive({ search: '', platform: '', group: 0, level: '' })
+const showAll = ref(false)
 const adjustTarget = ref<AdjustTarget | null>(null)
 const checkupTarget = ref<CheckupTarget | null>(null)
 
@@ -131,7 +136,7 @@ const groups = computed(() => (data.value?.groups ?? [])
 
 async function load() {
   try {
-    data.value = await dispatchApi.overview('')
+    data.value = await dispatchApi.overview('', showAll.value)
   } catch (e) {
     error.value = extractApiErrorMessage(e, '加载失败')
   }

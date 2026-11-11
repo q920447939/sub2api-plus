@@ -44,7 +44,7 @@ func (r *TrafficRule) normalize(def TrafficRule) error {
 		return fmt.Errorf("%w：选了「固定值」参照就要填固定值", ErrInvalid)
 	}
 	if r.MinPeers < 1 {
-		r.MinPeers = 2
+		r.MinPeers = 1
 	}
 	if r.MinSamples < 1 {
 		r.MinSamples = 50
@@ -360,7 +360,11 @@ func ReferenceFor(env *JudgeEnv, item Item, s Subject) *Reference {
 		case "fixed":
 			if r.Fixed != nil {
 				v := *r.Fixed
-				return &Reference{Source: "fixed", Label: "固定值 " + m.Format(v), value: func(int64, bool) (float64, bool) { return v, true }}
+				label := "固定值 " + m.Format(v)
+				if v == 0 {
+					label = "按绝对值"
+				}
+				return &Reference{Source: "fixed", Label: label, value: func(int64, bool) (float64, bool) { return v, true }}
 			}
 		}
 	}
@@ -388,7 +392,8 @@ func (TrafficDetector) Judge(env *JudgeEnv, item Item, s Subject) Verdict {
 	ref := ReferenceFor(env, item, s)
 	if ref == nil {
 		return Verdict{Level: LevelFew, Value: fptr(v), Short: m.Format(v),
-			Long: fmt.Sprintf("%s，暂无可比的参照", m.Format(v))}
+			Long:     fmt.Sprintf("%s，暂无可比的参照", m.Format(v)),
+			Evidence: map[string]any{"metric": m.Key, "no_reference": true, "samples": cur.Total()}}
 	}
 	rv, _ := ref.Value(0, true)
 	lv := r.level(m, v, rv)

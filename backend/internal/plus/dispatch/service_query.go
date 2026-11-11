@@ -108,7 +108,7 @@ func (q *QueryService) Meta(ctx context.Context) (map[string]any, error) {
 	for _, id := range ids {
 		a := cat.Accounts[id]
 		accounts = append(accounts, map[string]any{"id": a.ID, "name": a.Name, "platform": a.Platform, "group_ids": a.Groups,
-			"direct": a.Direct, "direct_why": a.DirectWhy, "base_url": a.BaseURL})
+			"direct": a.Direct, "direct_why": a.DirectWhy, "base_url": a.BaseURL, "serving": a.Serving()})
 	}
 	metricList := make([]map[string]any, 0, len(metrics))
 	for _, m := range metrics {
@@ -168,13 +168,15 @@ type OverviewGroup struct {
 	Summary  string             `json:"suggest_summary"`
 }
 
-func (q *QueryService) Overview(ctx context.Context, platform string) (map[string]any, error) {
+// Overview showAll=false 时不列「没在参与调度」的账号（已停用 / 调度已关闭，且近 24 小时没有流量），只返回隐藏了几个
+func (q *QueryService) Overview(ctx context.Context, platform string, showAll bool) (map[string]any, error) {
 	b, err := q.Boards.Load(ctx)
 	if err != nil {
 		return nil, err
 	}
 	cat := b.Snap.Catalog
 	counts := map[Level]int{}
+	hidden := map[int64]bool{}
 	var groups []OverviewGroup
 	for _, gid := range cat.GroupIDs {
 		g := cat.Groups[gid]
@@ -190,6 +192,12 @@ func (q *QueryService) Overview(ctx context.Context, platform string) (map[strin
 		og := OverviewGroup{ID: g.ID, Name: g.Name, Platform: g.Platform, Models: b.Snap.Traffic.GroupModelShares(gid), Requests: total, Summary: sug.Summary}
 		for _, aid := range g.Accounts {
 			a := cat.Accounts[aid]
+			if !showAll && !a.Serving() && shares[aid] == 0 {
+				if _, adjusted := b.Adjust[[2]int64{gid, aid}]; !adjusted {
+					hidden[aid] = true
+					continue
+				}
+			}
 			res := b.DimResults(gid, aid, "")
 			row := OverviewRow{AccountID: aid, Name: a.Name, BaseURL: a.BaseURL, Rate: a.Rate, Serving: a.Serving(), Status: a.Status,
 				Share: round1(shares[aid]), Dims: res, Worst: b.Worst(res), OneLine: b.OneLine(res), IsNew: a.IsNew(b.NewDays(g.Platform), time.Now()), Direct: a.Direct}
@@ -218,6 +226,9 @@ func (q *QueryService) Overview(ctx context.Context, platform string) (map[strin
 			counts[row.Worst]++
 			og.Rows = append(og.Rows, row)
 		}
+		if len(og.Rows) == 0 && !showAll {
+			continue
+		}
 		sort.SliceStable(og.Rows, func(i, j int) bool { return og.Rows[i].Share > og.Rows[j].Share })
 		groups = append(groups, og)
 	}
@@ -229,7 +240,7 @@ func (q *QueryService) Overview(ctx context.Context, platform string) (map[strin
 	}
 	return map[string]any{
 		"dimensions": b.Setup.Dims, "groups": groups, "mode": b.Setup.Config.Mode, "counts": counts, "faults": faults,
-		"coverage_gaps": b.CoverageGaps(), "as_of": b.Snap.At, "adjustments": len(b.Adjust),
+		"coverage_gaps": b.CoverageGaps(), "as_of": b.Snap.At, "adjustments": len(b.Adjust), "hidden": len(hidden),
 	}, nil
 }
 

@@ -167,10 +167,16 @@ func (m Metric) Format(v float64) string {
 	return fmt.Sprintf("%.0f %s", v, m.Unit)
 }
 
+// relBases 只能和别人 / 自己的历史比的指标
+func relBases() []string { return []string{"peer", "site", "self"} }
+
+// absBases 出错类指标：都比不了时按绝对值判（固定值 0，即「比 0 高几个百分点」）
+func absBases() []string { return []string{"peer", "site", "self", "fixed"} }
+
 var metrics = []Metric{
 	{Key: "err", Name: "报错率", Unit: "%", Better: "low", Dec: 1,
 		Desc: "上游返回 5xx、超时、连接中断的请求占比。用户自己造成的错误（余额不足、参数错）和 429 不算。",
-		Rule: TrafficRule{Duration: 60, Mode: "diff", Warn: 2, Bad: 5, Floor: fptr(1), MinEvents: 3}, Counted: true,
+		Rule: TrafficRule{Bases: absBases(), Fixed: fptr(0), MinPeers: 1, MinSamples: 50, Duration: 60, Mode: "diff", Warn: 2, Bad: 5, Floor: fptr(1), MinEvents: 3}, Counted: true,
 		count: func(a Agg) int64 { return a.Errors },
 		value: func(a Agg) (float64, bool) {
 			if a.Total() == 0 {
@@ -180,7 +186,7 @@ var metrics = []Metric{
 		}},
 	{Key: "r429", Name: "限流率", Unit: "%", Better: "low", Dec: 1,
 		Desc: "上游返回 429 的请求占比，说明号池容量紧张。",
-		Rule: TrafficRule{Duration: 60, Mode: "diff", Warn: 5, Bad: 12, Floor: fptr(2), MinEvents: 3}, Counted: true,
+		Rule: TrafficRule{Bases: absBases(), Fixed: fptr(0), MinPeers: 1, MinSamples: 50, Duration: 60, Mode: "diff", Warn: 5, Bad: 12, Floor: fptr(2), MinEvents: 3}, Counted: true,
 		count: func(a Agg) int64 { return a.Limited },
 		value: func(a Agg) (float64, bool) {
 			if a.Total() == 0 {
@@ -190,7 +196,7 @@ var metrics = []Metric{
 		}},
 	{Key: "ttft", Name: "首字耗时 p90", Unit: "s", Better: "low", Dec: 1,
 		Desc: "流式请求从发出到收到第一个字的时间，取最慢的 10%（p90），比平均值更能反映卡顿。",
-		Rule: TrafficRule{Duration: 60, Mode: "ratio", Warn: 1.5, Bad: 2, Floor: fptr(3)},
+		Rule: TrafficRule{Bases: relBases(), MinPeers: 1, MinSamples: 50, Duration: 60, Mode: "ratio", Warn: 1.5, Bad: 2, Floor: fptr(3)},
 		value: func(a Agg) (float64, bool) {
 			if a.TTFTN == 0 {
 				return 0, false
@@ -199,7 +205,7 @@ var metrics = []Metric{
 		}},
 	{Key: "tps", Name: "输出速度", Unit: "tok/s", Better: "high", Dec: 0,
 		Desc: "开始输出以后每秒输出多少 token（输出 token ÷ 输出用时）。",
-		Rule: TrafficRule{Duration: 60, Mode: "pct", Warn: 70, Bad: 50},
+		Rule: TrafficRule{Bases: relBases(), MinPeers: 1, MinSamples: 50, Duration: 60, Mode: "pct", Warn: 70, Bad: 50},
 		value: func(a Agg) (float64, bool) {
 			if a.GenMs <= 0 || a.OutTokens <= 0 {
 				return 0, false
@@ -208,7 +214,7 @@ var metrics = []Metric{
 		}},
 	{Key: "cache", Name: "缓存命中率", Unit: "%", Better: "high", Dec: 0,
 		Desc: "输入里命中缓存的比例（缓存读取 ÷ 全部输入）。反映上游号池能不能把同一会话留在同一个底层账号上。",
-		Rule: TrafficRule{Duration: 60, Mode: "diff", Warn: 15, Bad: 30},
+		Rule: TrafficRule{Bases: relBases(), MinPeers: 1, MinSamples: 50, Duration: 60, Mode: "diff", Warn: 15, Bad: 30},
 		value: func(a Agg) (float64, bool) {
 			if a.CacheTotal <= 0 {
 				return 0, false

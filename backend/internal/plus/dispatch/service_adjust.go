@@ -106,7 +106,7 @@ func (s *AdjustService) preview(b *Board, req AdjustRequest) (Preview, error) {
 	if a := cat.Accounts[req.AccountID]; a != nil && len(a.Groups) > 1 {
 		p.Affected = cat.GroupNames(a.Groups)
 	}
-	// 安全阀：同组至少留一个没被暂停、正在接客的账号
+	// 安全阀：同组至少留一个没被暂停、参与调度的账号
 	alive := 0
 	for _, id := range g.Accounts {
 		a := cat.Accounts[id]

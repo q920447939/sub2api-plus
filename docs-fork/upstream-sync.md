@@ -118,6 +118,7 @@ backend/migrations/258_plus_iq.sql
 backend/internal/plus/dispatch/     上游调度台全部后端代码（hook/ 是选号钩子引擎）
 backend/internal/service/plus_dispatch_hook.go   选号钩子（6 个改名函数的原名实现）
 backend/migrations/259_plus_dispatch.sql
+backend/migrations/260_plus_dispatch_reference_defaults.sql   流量类参照默认值（至少 1 家可比；报错率 / 限流率按绝对值兜底）
 frontend/src/plus/dispatch/         上游调度台全部前端代码
 frontend/src/plus/iq/            智商检测全部前端代码（user/ admin/ shared/）
 backend/internal/service/plus_bridge.go
