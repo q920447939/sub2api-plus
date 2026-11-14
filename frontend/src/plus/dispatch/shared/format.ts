@@ -99,7 +99,16 @@ export function ruleText(r?: RuleState | Rule | null): string {
 /** 账号（或它的某个模型）在各分组的设置汇总成按钮上的字 */
 export function flowText(rules: Rule[], groups: number, model: string | null): { text: string; tone: '' | 'part' | 'off' } {
   const rs = rules.filter((r) => (r.model || '') === (model || ''))
-  if (!rs.length) return { text: model ? '跟随账号' : '正常', tone: '' }
+  if (!rs.length) {
+    if (model) return { text: '跟随账号', tone: '' }
+    // 账号行：只在某些模型上调过（没有「全部模型」的设置）也要显示出来，不能写「正常」
+    const mr = rules.filter((r) => r.model)
+    const models = [...new Set(mr.map((r) => r.model))]
+    if (!models.length) return { text: '正常', tone: '' }
+    if (models.length > 1) return { text: `已调 ${models.length} 个模型`, tone: 'part' }
+    const texts = [...new Set(mr.map((r) => ruleText(r)))]
+    return { text: `${models[0]} ${texts.length === 1 ? texts[0] : '已调'}`, tone: 'part' }
+  }
   if (rs.length >= groups && rs.every((r) => r.share <= 0)) return { text: '暂停', tone: 'off' }
   if (groups === 1) return { text: ruleText(rs[0]), tone: rs[0].share <= 0 ? 'off' : 'part' }
   return { text: `已调 ${rs.length} 个分组`, tone: rs.every((r) => r.share <= 0) ? 'off' : 'part' }

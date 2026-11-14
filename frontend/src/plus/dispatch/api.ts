@@ -39,6 +39,18 @@ export interface ProbeTag {
   state: ProbeState
   models?: string[]
   short?: string
+  /** 判的是模型身份：未通过 = 模型异常 */
+  identity?: boolean
+  /** 还没测过的模型 */
+  untested?: string[]
+}
+
+/** 调用失败多（真实流量，只看最近几小时） */
+export interface FailModel {
+  model: string
+  failed: number
+  total: number
+  hours: number
 }
 
 export interface Rule {
@@ -65,7 +77,7 @@ export interface AccountRow {
   bars: Slot[]
   week_ok: number
   week_fail: number
-  down_models: string[]
+  fail_models: FailModel[]
   probes: ProbeTag[]
   rules: Rule[]
   marks: string[]
@@ -82,6 +94,7 @@ export interface PlatformSum {
   platform: string
   accounts: number
   worst: Status
+  bad: number
   cols: Cols
 }
 
@@ -104,6 +117,7 @@ export interface ModelRow {
   bars: Slot[]
   probes: ProbeTag[]
   rules: Rule[]
+  fail?: FailModel
 }
 
 export interface LaneRow {
@@ -242,6 +256,7 @@ export interface Run {
   input_tokens: number | null
   output_tokens: number | null
   queued_at: string
+  preview_url?: string
 }
 
 export interface OutcomeSpec {
@@ -263,6 +278,7 @@ export interface TypeSpec {
   description: string
   judges: boolean
   gallery: boolean
+  identity: boolean
   has_prompt: boolean
   has_answers: boolean
   rule_text: string
@@ -357,6 +373,8 @@ export interface Config {
   concurrency: number
   idle_minutes: number
   fault_runs: number
+  works_keep: number
+  audit_days: number
   same_as_channel: boolean
   rules: HealthRules
 }
@@ -459,7 +477,7 @@ export interface RunsRow {
   verdict: Verdict | null
   last: RunDot | null
   every: number | null
-  thumb?: number
+  works?: { id: number; at: string; summary: string; preview_url: string }[]
 }
 
 export interface RunsBoard {

@@ -9,7 +9,7 @@
           <div>
             <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ a.name }}</h1>
             <div class="mb-2.5 mt-1 text-sm text-gray-500">{{ platformName(a.platform) }} · {{ groupsText }} · 最近请求 {{ lastText(a.last_at, a.last_hour) }}</div>
-            <Tags :rules="a.rules" :probes="a.probes" :groups="a.group_ids.length" :group-name="gname" :is-new="a.is_new" :created-at="a.created_at" :down-models="a.down_models" @probe="probe = { accountId: a.id, itemId: $event }" />
+            <Tags :rules="a.rules" :probes="a.probes" :groups="a.group_ids.length" :group-name="gname" :is-new="a.is_new" :created-at="a.created_at" :fail-models="a.fail_models" @probe="probe = { accountId: a.id, itemId: $event }" />
           </div>
           <div class="ml-auto flex items-center gap-3">
             <div class="inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-dark-700">
@@ -44,7 +44,7 @@
                 <tr class="cursor-pointer" :class="openModel === m.model ? 'bg-gray-50 dark:bg-dark-800' : ''" data-testid="dispatch-model-row" @click="openModel = openModel === m.model ? '' : m.model">
                   <td class="sticky left-0 z-[1] whitespace-nowrap bg-white dark:bg-dark-900"><span class="mr-1.5 inline-block text-gray-400 transition-transform" :class="openModel === m.model ? 'rotate-90' : ''">›</span><span class="font-mono font-semibold">{{ m.model }}</span></td>
                   <td class="min-w-[300px]"><StatusBar :bars="m.bars" :gran="gran" :marks="marksOf(m.model)" /></td>
-                  <td @click.stop><Tags :rules="a.rules" :probes="m.probes" :groups="a.group_ids.length" :group-name="gname" :model="m.model" @probe="probe = { accountId: a.id, itemId: $event, model: m.model }" /></td>
+                  <td @click.stop><Tags :rules="a.rules" :probes="m.probes" :groups="a.group_ids.length" :group-name="gname" :model="m.model" :fail-models="m.fail ? [m.fail] : []" @probe="probe = { accountId: a.id, itemId: $event, model: m.model }" /></td>
                   <ColCells :c="m.cols" />
                   <td class="sticky right-0 z-[1] bg-white dark:bg-dark-900" @click.stop><FlowButton :rules="a.rules" :groups="a.group_ids.length" :model="m.model" @click="weight = { accountId: a.id, model: m.model }" /></td>
                 </tr>

@@ -13,7 +13,7 @@ import (
 )
 
 // Register 装配（Composition Root）：注册检测器、启动后台任务、挂管理端路由、把钩子接到上游选号。
-func Register(db *sql.DB, admin *gin.RouterGroup) {
+func Register(db *sql.DB, v1, admin *gin.RouterGroup) {
 	ctx := context.Background()
 	repo := NewRepository(db)
 	llm := newIQCompleter()
@@ -40,12 +40,22 @@ func Register(db *sql.DB, admin *gin.RouterGroup) {
 	detect := &DetectionLoader{Config: repo, Setup: repo, Runs: repo, Ignores: repo, Reg: registry}
 	exec := &Executor{Runs: repo, Setup: repo, Registry: registry, Channel: DirectChannel{Catalog: catalog},
 		OnFinish: detect.Invalidate}
-	sched := &Scheduler{Config: repo, Setup: repo, Runs: repo, Planner: planner, Snap: snap, Exec: exec}
+	sched := &Scheduler{Config: repo, Setup: repo, Runs: repo, Planner: planner, Snap: snap, Exec: exec, Audit: repo}
 
+	preview := &Previewer{Store: repo}
 	svc := &Service{Config: repo, Setup: repo, Runs: repo, Ignores: repo, Rules: repo, AuditDB: repo,
 		Channel: channelstatus.NewRepository(db), Registry: registry, Planner: planner, Snap: snap, Detect: detect, Sched: sched,
-		Library: library, OnRules: runner.Wake, LastSeen: lastSeenQuery(db)}
+		Library: library, Preview: preview, OnRules: runner.Wake, LastSeen: lastSeenQuery(db)}
 	(&Handler{S: svc}).Register(admin)
+	preview.Register(v1)
+
+	traffic.Ignored = func(ctx context.Context) []string {
+		cfg, _, err := repo.LoadConfig(ctx)
+		if err != nil {
+			cfg = DefaultConfig()
+		}
+		return svc.healthRules(ctx, cfg).IgnoredCategories
+	}
 
 	sched.Start(ctx)
 	library.Start(ctx)

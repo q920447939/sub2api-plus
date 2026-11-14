@@ -56,7 +56,7 @@ func registerDispatch(v1 *gin.RouterGroup, adminAuth gin.HandlerFunc, sub *servi
 	}
 	admin := v1.Group("/plus/admin")
 	admin.Use(adminAuth)
-	dispatch.Register(db, admin)
+	dispatch.Register(db, v1, admin)
 }
 
 // registerIQ wires 模型智商检测（鹈鹕画图画廊 + 定时检测）。

@@ -298,7 +298,15 @@ func (r *Repository) LastRunAt(ctx context.Context) (map[string]time.Time, error
 
 func runKeyOf(item int64, cred, model string) string { return itoa(item) + "|" + cred + "|" + model }
 
-func (r *Repository) PruneRuns(ctx context.Context, before time.Time) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM plus_dispatch_run WHERE status = 'done' AND queued_at < $1`, before)
+func (r *Repository) PruneRuns(ctx context.Context, before time.Time, keepWorks int) error {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM plus_dispatch_run WHERE status = 'done' AND outcome <> $2 AND queued_at < $1`,
+		before, OutcomeSaved); err != nil {
+		return err
+	}
+	_, err := r.db.ExecContext(ctx, `DELETE FROM plus_dispatch_run WHERE id IN (
+		SELECT id FROM (
+		  SELECT id, ROW_NUMBER() OVER (PARTITION BY item_id, cred_key, model ORDER BY id DESC) AS rn
+		  FROM plus_dispatch_run WHERE status = 'done' AND outcome = $1
+		) t WHERE rn > $2)`, OutcomeSaved, keepWorks)
 	return err
 }

@@ -105,13 +105,23 @@ func (h *PreviewHandler) serve(c *gin.Context) {
 			return
 		}
 	}
+	name := ""
+	if c.Query("download") == "1" && scope == ScopeAdmin {
+		name = "pelican-" + strconv.FormatInt(id, 10) + ".html"
+	}
+	ServePreviewHTML(c, html, name)
+}
+
+// ServePreviewHTML 输出不可信的模型作品：sandbox + 禁止外连的 CSP，只允许本站嵌入。downloadName 非空时作为附件下载。
+// 上游调度台的存档题预览也用它。
+func ServePreviewHTML(c *gin.Context, html, downloadName string) {
 	c.Header("Content-Security-Policy", previewCSPHeader)
 	c.Header("X-Frame-Options", "SAMEORIGIN")
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Referrer-Policy", "no-referrer")
 	c.Header("Cache-Control", "private, max-age=3600")
-	if c.Query("download") == "1" && scope == ScopeAdmin {
-		c.Header("Content-Disposition", "attachment; filename=pelican-"+strconv.FormatInt(id, 10)+".html")
+	if downloadName != "" {
+		c.Header("Content-Disposition", "attachment; filename="+downloadName)
 	}
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(WithPreviewCSP(html)))
 }

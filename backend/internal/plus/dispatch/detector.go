@@ -29,6 +29,7 @@ type TypeSpec struct {
 	Description  string        `json:"description"`
 	Judges       bool          `json:"judges"`        // 会不会给出「通过 / 未通过」（存档题只存作品）
 	Gallery      bool          `json:"gallery"`       // 结果是作品（检测记录里显示预览）
+	Identity     bool          `json:"identity"`      // 判的是「模型是不是它声称的那个」：未通过就是「模型异常」
 	HasPrompt    bool          `json:"has_prompt"`    // 检测项上要填题面
 	HasAnswers   bool          `json:"has_answers"`   // 要填标准答案
 	RuleText     string        `json:"rule_text"`     // 判定规则的句子，{key} 位置放输入框

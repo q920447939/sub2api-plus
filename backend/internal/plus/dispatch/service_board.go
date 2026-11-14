@@ -50,6 +50,44 @@ type ProbeTag struct {
 	State  string   `json:"state"` // fail | pass | ignored | fault | few | none
 	Models []string `json:"models,omitempty"`
 	Short  string   `json:"short,omitempty"`
+	// Identity 这个检测项判的是模型身份：未通过显示「模型异常」
+	Identity bool `json:"identity,omitempty"`
+	// Untested 账号上还没测过的模型（整体是通过 / 未通过等时也写出来，避免「通过」让人以为全测过了）
+	Untested []string `json:"untested,omitempty"`
+}
+
+// FailModel 调用失败多的模型（只看最近，已经恢复的不算），写出依据
+type FailModel struct {
+	Model  string `json:"model"`
+	Failed int64  `json:"failed"`
+	Total  int64  `json:"total"`
+	Hours  int    `json:"hours"`
+}
+
+// failWindowHours 「调用失败多」看最近几个小时
+const failWindowHours = 6
+
+// failModel 最近 6 小时请求够数、健康分到了「异常」，并且最近一个有请求的小时里还在失败，才算调用失败多
+func (st *state) failModel(a *CatAccount, model string) *FailModel {
+	per := map[int64]Agg{}
+	st.tr.Each(TFilter{Account: a.ID, Model: model, From: st.tr.NowBucket() - (failWindowHours-1)*3600}, func(x *TRow) {
+		per[x.Bucket] = per[x.Bucket].Add(x.Agg)
+	})
+	var sum Agg
+	var last int64
+	for b, x := range per {
+		sum = sum.Add(x)
+		if x.Total() > 0 && b > last {
+			last = b
+		}
+	}
+	if last == 0 || per[last].Failed() == 0 {
+		return nil
+	}
+	if st.health.StatusOf(st.health.Score(sum, st.health.Rules.MinSample)) != channelstatus.StatusDown {
+		return nil
+	}
+	return &FailModel{Model: model, Failed: sum.Failed(), Total: sum.Total(), Hours: failWindowHours}
 }
 
 // accountModels 账号近 24 小时有流量的模型 + 测过的模型（按请求数从多到少）
@@ -75,7 +113,7 @@ func (st *state) accountModels(a *CatAccount) []laneModel {
 
 // modelProbe 一个模型在一个检测项上的标签
 func (st *state) modelProbe(it Item, a *CatAccount, model string) ProbeTag {
-	t := ProbeTag{ItemID: it.ID, Name: it.Name, State: "none"}
+	t := ProbeTag{ItemID: it.ID, Name: it.Name, State: "none", Identity: st.det.reg.Spec(it.Type).Identity}
 	v := st.det.Verdict(it, a, model)
 	switch {
 	case v == nil:
@@ -105,7 +143,7 @@ func (st *state) accountProbes(a *CatAccount, models []laneModel) []ProbeTag {
 			t := st.modelProbe(it, a, m.Model)
 			by[t.State] = append(by[t.State], m.Model)
 		}
-		t := ProbeTag{ItemID: it.ID, Name: it.Name}
+		t := ProbeTag{ItemID: it.ID, Name: it.Name, Identity: st.det.reg.Spec(it.Type).Identity}
 		for _, s := range []string{"fail", "pass", "ignored", "fault", "few", "none"} {
 			if len(by[s]) > 0 {
 				t.State = s
@@ -117,6 +155,9 @@ func (st *state) accountProbes(a *CatAccount, models []laneModel) []ProbeTag {
 		}
 		if t.State == "" {
 			t.State = "none"
+		}
+		if t.State != "none" {
+			t.Untested = by["none"]
 		}
 		out = append(out, t)
 	}
@@ -137,7 +178,7 @@ type AccountRow struct {
 	Bars       []Slot      `json:"bars"`
 	WeekOK     int64       `json:"week_ok"`
 	WeekFail   int64       `json:"week_fail"`
-	DownModels []string    `json:"down_models"`
+	FailModels []FailModel `json:"fail_models"` // 调用失败多（真实流量）；「模型异常」只来自身份类检测（见 Probes）
 	Probes     []ProbeTag  `json:"probes"`
 	Rules      []Rule      `json:"rules"`
 	Marks      []time.Time `json:"marks"` // 调整发生的时间（状态条上标出来）
@@ -151,7 +192,7 @@ func (s *Service) accountRow(ctx context.Context, st *state, a *CatAccount, g Gr
 	r := AccountRow{ID: a.ID, Name: a.Name, Platform: a.Platform, Groups: a.Groups, CreatedAt: a.CreatedAt,
 		IsNew: a.IsNew(newAccountDays, st.now), Cols: st.cols(TFilter{Account: a.ID}),
 		Bars: st.health.Timeline(st.tr, TFilter{Account: a.ID}, g, slots), Probes: st.accountProbes(a, models),
-		DownModels: []string{}, Rules: []Rule{}, Marks: marks}
+		FailModels: []FailModel{}, Rules: []Rule{}, Marks: marks}
 	if r.Groups == nil {
 		r.Groups = []int64{}
 	}
@@ -173,8 +214,11 @@ func (s *Service) accountRow(ctx context.Context, st *state, a *CatAccount, g Gr
 		r.LastHour = &lastB
 	}
 	for _, m := range models {
-		if m.N > 0 && st.health.Current(st.tr, TFilter{Account: a.ID, Model: m.Model}).Status == channelstatus.StatusDown {
-			r.DownModels = append(r.DownModels, m.Model)
+		if m.N <= 0 {
+			continue
+		}
+		if f := st.failModel(a, m.Model); f != nil {
+			r.FailModels = append(r.FailModels, *f)
 		}
 	}
 	for _, x := range st.rules {
@@ -182,7 +226,7 @@ func (s *Service) accountRow(ctx context.Context, st *state, a *CatAccount, g Gr
 			r.Rules = append(r.Rules, x)
 		}
 	}
-	r.Needs = r.Cols.Status == channelstatus.StatusDown || r.Cols.Status == channelstatus.StatusWarn || len(r.DownModels) > 0
+	r.Needs = r.Cols.Status == channelstatus.StatusDown || r.Cols.Status == channelstatus.StatusWarn || len(r.FailModels) > 0
 	for _, p := range r.Probes {
 		if p.State == "fail" {
 			r.Needs = true
@@ -196,6 +240,7 @@ type PlatformSum struct {
 	Platform string `json:"platform"`
 	Accounts int    `json:"accounts"`
 	Worst    Status `json:"worst"`
+	Bad      int    `json:"bad"` // 整体状态是「异常」的账号数（Tab 颜色取最差的那个，旁边写出有几个）
 	Cols     Cols   `json:"cols"`
 }
 
@@ -252,6 +297,9 @@ func (s *Service) Board(ctx context.Context, g Gran) (*Board, error) {
 		}
 		p.Accounts++
 		platAcc[a.Platform][a.ID] = true
+		if row.Cols.Status == channelstatus.StatusDown {
+			p.Bad++
+		}
 		if statusRank(row.Cols.Status) > statusRank(p.Worst) {
 			p.Worst = row.Cols.Status
 		}
@@ -281,6 +329,7 @@ type ModelRow struct {
 	Bars   []Slot     `json:"bars"`
 	Probes []ProbeTag `json:"probes"`
 	Rules  []Rule     `json:"rules"`
+	Fail   *FailModel `json:"fail,omitempty"` // 调用失败多
 }
 
 // GroupRow 账号所在的一个分组
@@ -349,7 +398,7 @@ func (s *Service) Account(ctx context.Context, id int64, g Gran) (*AccountDetail
 			continue
 		}
 		row := ModelRow{Model: m.Model, Cols: st.cols(TFilter{Account: id, Model: m.Model}),
-			Bars: st.health.Timeline(st.tr, TFilter{Account: id, Model: m.Model}, g, n), Probes: []ProbeTag{}, Rules: []Rule{}}
+			Bars: st.health.Timeline(st.tr, TFilter{Account: id, Model: m.Model}, g, n), Probes: []ProbeTag{}, Rules: []Rule{}, Fail: st.failModel(a, m.Model)}
 		for _, it := range st.det.Items {
 			if it.Enabled && s.Registry.Spec(it.Type).Judges {
 				row.Probes = append(row.Probes, st.modelProbe(it, a, m.Model))

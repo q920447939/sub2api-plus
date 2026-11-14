@@ -291,7 +291,7 @@ var _ Detector = (*FingerprintDetector)(nil)
 
 func (d *FingerprintDetector) Spec() TypeSpec {
 	return TypeSpec{
-		Key: "fingerprint", Name: "模型指纹识别", Judges: true, DefaultEvery: 60,
+		Key: "fingerprint", Name: "模型指纹识别", Judges: true, Identity: true, DefaultEvery: 60,
 		Description: "让模型凭第一反应写约 300 个 1–355 的整数（每次 3 道），按它偏好的数字和参考库比对，识别它实际是哪个模型。基于 lm-detector（MIT）。",
 		RuleText:    "最近 {window} 次有效结果里有 {bad_min} 次识别成别的模型算未通过；置信度低于 {min_confidence}% 的那次不算；满 {min_valid} 次才下结论",
 		RuleFields:  []RuleField{{Key: "window", Min: 1, Max: 50}, {Key: "bad_min", Min: 1, Max: 50}, {Key: "min_confidence", Min: 1, Max: 100, Unit: "%"}, {Key: "min_valid", Min: 1, Max: 50}},

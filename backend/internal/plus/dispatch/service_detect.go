@@ -81,6 +81,8 @@ func (s *Service) SaveConfig(ctx context.Context, cfg Config, ver int64, actor A
 	num("同时检测", old.Concurrency, cfg.Concurrency)
 	num("备用号检测间隔（分钟）", old.IdleMinutes, cfg.IdleMinutes)
 	num("连续出错几次算测不了", old.FaultRuns, cfg.FaultRuns)
+	num("作品保留份数", old.WorksKeep, cfg.WorksKeep)
+	num("操作日志保留天数", old.AuditDays, cfg.AuditDays)
 	if !cfg.SameAsChannel && mustJSONString(old.Rules) != mustJSONString(cfg.Rules) {
 		lines = append(lines, rulesDiff(old, cfg)...)
 	}
@@ -699,6 +701,7 @@ func (s *Service) ProbeSheet(ctx context.Context, accountID, itemID int64) (*Pro
 		asc := make([]Run, len(rs))
 		for i := range rs {
 			asc[len(rs)-1-i] = rs[i]
+			s.withPreview(ctx, &asc[len(rs)-1-i])
 		}
 		out.Models = append(out.Models, ProbeModel{Model: m.Model, Verdict: st.det.Verdict(*it, a, m.Model), Every: planEvery(st.det.Plans, itemID, a, m.Model),
 			Ignore: st.det.Ignored(itemID, a, m.Model), Runs: asc})
@@ -779,8 +782,10 @@ func (s *Service) Run(ctx context.Context, id int64) (*Run, error) {
 	if it := det.Item(r.ItemID); it != nil {
 		x := settle(s.Registry, *it, *r, det.ignores[runKeyOf(r.ItemID, r.CredKey, r.Model)])
 		x.Prompt, x.Reply = r.Prompt, r.Reply
+		s.withPreview(ctx, &x)
 		return &x, nil
 	}
+	s.withPreview(ctx, r)
 	return r, nil
 }
 
@@ -805,18 +810,29 @@ type RunsKPI struct {
 
 // RunsRow 按账号：一个 账号 × 模型 × 检测项
 type RunsRow struct {
-	AccountID int64    `json:"account_id"`
-	Account   string   `json:"account"`
-	Groups    []int64  `json:"group_ids"`
-	Model     string   `json:"model"`
-	ItemID    int64    `json:"item_id"`
-	Item      string   `json:"item"`
-	Dots      []RunDot `json:"dots"`
-	Verdict   *Verdict `json:"verdict"`
-	Last      *RunDot  `json:"last"`
-	Every     *int     `json:"every"`
-	Thumb     *int64   `json:"thumb,omitempty"` // 存档题：最近一份作品的记录 id
+	AccountID int64     `json:"account_id"`
+	Account   string    `json:"account"`
+	Groups    []int64   `json:"group_ids"`
+	Model     string    `json:"model"`
+	ItemID    int64     `json:"item_id"`
+	Item      string    `json:"item"`
+	Dots      []RunDot  `json:"dots"`
+	Verdict   *Verdict  `json:"verdict"`
+	Last      *RunDot   `json:"last"`
+	Every     *int      `json:"every"`
+	Works     []RunWork `json:"works"` // 存档题：最近几份作品（新 → 旧）；不是存档题为 null
 }
+
+// RunWork 一份作品
+type RunWork struct {
+	ID         int64     `json:"id"`
+	At         time.Time `json:"at"`
+	Summary    string    `json:"summary"`
+	PreviewURL string    `json:"preview_url"`
+}
+
+// runsWorks 检测记录页每行显示几份作品
+const runsWorks = 6
 
 // RunsBoard 检测记录（按账号）
 type RunsBoard struct {
@@ -865,11 +881,12 @@ func (s *Service) RunsBoard(ctx context.Context, q RunsQuery) (*RunsBoard, error
 			row.Last = &l
 			out.KPI.Tested++
 		}
-		for _, r := range rs {
-			if r.Outcome == OutcomeSaved {
-				id := r.ID
-				row.Thumb = &id
-				break
+		if s.Registry.Spec(it.Type).Gallery {
+			row.Works = []RunWork{}
+			for _, r := range rs {
+				if r.Outcome == OutcomeSaved && len(row.Works) < runsWorks {
+					row.Works = append(row.Works, RunWork{ID: r.ID, At: r.QueuedAt, Summary: r.Summary, PreviewURL: s.Preview.URL(ctx, r.ID)})
+				}
 			}
 		}
 		out.Rows = append(out.Rows, row)
@@ -975,6 +992,7 @@ func (s *Service) RunsList(ctx context.Context, q RunsQuery, beforeID int64) ([]
 			if q.Result != "" && x.Outcome != q.Result {
 				continue
 			}
+			s.withPreview(ctx, &x)
 			out = append(out, x)
 			if len(out) >= 100 {
 				break

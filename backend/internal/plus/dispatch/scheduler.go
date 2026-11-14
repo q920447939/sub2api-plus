@@ -82,12 +82,15 @@ func (e *Executor) execute(ctx context.Context, run Run) ExecResult {
 // Scheduler 定时把到期计划展开成排队记录，再按全局并发取出执行。
 // 排队落库（plus_dispatch_run.status = queued），手动触发和定时触发走同一条路；多实例用 SKIP LOCKED 抢占。
 type Scheduler struct {
-	Config   ConfigStore
-	Setup    SetupStore
-	Runs     RunStore
-	Planner  Planner
-	Snap     *Snapshotter
-	Exec     *Executor
+	Config  ConfigStore
+	Setup   SetupStore
+	Runs    RunStore
+	Planner Planner
+	Snap    *Snapshotter
+	Exec    *Executor
+	Audit   interface {
+		PruneAudit(ctx context.Context, before time.Time) error
+	}
 	wake     chan struct{}
 	inflight sync.WaitGroup
 }
@@ -110,9 +113,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 			s.Tick(ctx)
 			if time.Since(lastPrune) > 6*time.Hour {
 				lastPrune = time.Now()
-				if err := s.Runs.PruneRuns(ctx, time.Now().Add(-runRetention)); err != nil {
-					log.Printf("[plus.dispatch] prune runs: %v", err)
-				}
+				s.prune(ctx)
 			}
 			select {
 			case <-ctx.Done():
@@ -122,6 +123,23 @@ func (s *Scheduler) Start(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// prune 清理检测记录（作品按份数）和操作日志（按天数）
+func (s *Scheduler) prune(ctx context.Context) {
+	cfg, _, err := s.Config.LoadConfig(ctx)
+	if err != nil {
+		log.Printf("[plus.dispatch] prune: load config: %v", err)
+		return
+	}
+	if err := s.Runs.PruneRuns(ctx, time.Now().Add(-runRetention), cfg.WorksKeep); err != nil {
+		log.Printf("[plus.dispatch] prune runs: %v", err)
+	}
+	if s.Audit != nil {
+		if err := s.Audit.PruneAudit(ctx, time.Now().AddDate(0, 0, -cfg.AuditDays)); err != nil {
+			log.Printf("[plus.dispatch] prune audit: %v", err)
+		}
+	}
 }
 
 // Wake 手动触发后立即调度一轮

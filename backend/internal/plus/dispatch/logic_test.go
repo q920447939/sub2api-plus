@@ -216,3 +216,25 @@ func TestCachedModelsReadsBundleHeader(t *testing.T) {
 		t.Fatal("missing file should be nil")
 	}
 }
+
+// 「调用失败多」只看最近 6 小时，最近一个有请求的小时已经不失败了就不挂（真实情况：tk image 17 点那波 404 已恢复，标签却挂到第二天）
+func TestFailModelOnlyRecentAndNotRecovered(t *testing.T) {
+	now := time.Date(2026, 11, 14, 21, 30, 0, 0, time.UTC)
+	nb := now.Truncate(time.Hour).Unix()
+	acc := &CatAccount{ID: 10}
+	row := func(hoursAgo int64, ok, errs int64) TRow {
+		return TRow{Bucket: nb - hoursAgo*3600, TKey: TKey{Group: 1, Account: 10, Model: "a"}, Agg: Agg{Requests: ok, Errors: errs}}
+	}
+	st := func(rows ...TRow) *state {
+		return &state{tr: NewTrafficSet(now, rows), health: Health{Rules: channelstatus.DefaultRules()}}
+	}
+	if f := st(row(4, 5, 60), row(1, 4, 6)).failModel(acc, "a"); f == nil || f.Failed != 66 || f.Total != 75 || f.Hours != failWindowHours {
+		t.Fatalf("still failing: %+v", f)
+	}
+	if f := st(row(4, 5, 60), row(1, 4, 0)).failModel(acc, "a"); f != nil {
+		t.Fatalf("recovered in the latest hour: %+v", f)
+	}
+	if f := st(row(10, 5, 60), row(1, 45, 5)).failModel(acc, "a"); f != nil { // 算上 10 小时前那波就是异常，只看 6 小时只是降级
+		t.Fatalf("failures older than 6 hours do not count: %+v", f)
+	}
+}

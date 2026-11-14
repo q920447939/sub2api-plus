@@ -1,6 +1,8 @@
 package dispatch
 
 import (
+	"time"
+
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -218,6 +220,11 @@ func (r *Repository) AddAudit(ctx context.Context, e AuditEntry) error {
 	}
 	_, err := r.db.ExecContext(ctx, `INSERT INTO plus_dispatch_audit (operator_id, operator, action, target_type, target_id, summary,
 		before, after) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, e.OperatorID, e.Operator, e.Action, e.TargetType, e.TargetID, e.Summary, before, after)
+	return err
+}
+
+func (r *Repository) PruneAudit(ctx context.Context, before time.Time) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM plus_dispatch_audit WHERE created_at < $1`, before)
 	return err
 }
 

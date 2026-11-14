@@ -12,6 +12,7 @@
             @click="pickPlatform(p.platform)"
           >
             <i class="h-2 w-2 rounded-full" :class="STATUS_META[p.worst].dot" />{{ platformName(p.platform) }}<span class="text-xs font-normal text-gray-400">{{ p.accounts }}</span>
+            <span v-if="p.bad" class="text-xs font-medium text-red-600 dark:text-red-400">{{ p.bad }} 个异常</span>
           </button>
         </div>
         <div class="ml-auto flex flex-wrap items-center gap-3">
@@ -72,7 +73,7 @@
                 <StatusBar :bars="a.bars" :gran="gran" :marks="a.marks" fixed />
               </td>
               <td @click.stop>
-                <Tags :rules="a.rules" :probes="a.probes" :groups="a.group_ids.length" :group-name="groupName" :is-new="a.is_new" :created-at="a.created_at" :down-models="a.down_models" @probe="probe = { accountId: a.id, itemId: $event }" />
+                <Tags :rules="a.rules" :probes="a.probes" :groups="a.group_ids.length" :group-name="groupName" :is-new="a.is_new" :created-at="a.created_at" :fail-models="a.fail_models" @probe="probe = { accountId: a.id, itemId: $event }" />
               </td>
               <ColCells :c="a.cols" />
               <td class="whitespace-nowrap">

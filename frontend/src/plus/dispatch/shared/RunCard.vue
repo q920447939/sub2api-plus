@@ -7,6 +7,9 @@
       <button type="button" class="ml-auto text-xs text-primary-600 hover:underline" @click="emit('open', run.id)">{{ spec.gallery ? '看作品' : '看完整回答' }}</button>
     </div>
     <div v-if="run.summary" class="mt-1">{{ run.summary }}</div>
+    <div v-if="run.preview_url" class="mt-2 w-48 cursor-pointer overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700" @click="emit('open', run.id)">
+      <PreviewFrame :src="run.preview_url" thumb />
+    </div>
     <template v-if="top.length">
       <div class="mt-2 text-xs text-gray-400">最像的模型</div>
       <div v-for="x in top" :key="x.model" class="grid grid-cols-[minmax(0,1.2fr)_1fr_44px] items-center gap-2 py-0.5">
@@ -26,6 +29,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Run, TypeSpec } from '../api'
+import PreviewFrame from '@/plus/iq/shared/PreviewFrame.vue'
 import { dt, num, outcomeOf, TRIGGER } from './format'
 
 const props = defineProps<{ run: Run; spec: TypeSpec }>()

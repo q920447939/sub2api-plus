@@ -104,6 +104,7 @@ type Run struct {
 	QueuedAt     time.Time      `json:"queued_at"`
 	StartedAt    *time.Time     `json:"started_at"`
 	FinishedAt   *time.Time     `json:"finished_at"`
+	PreviewURL   string         `json:"preview_url,omitempty"` // 存档题作品的预览链接（签名，1~2 小时有效）
 }
 
 // Verdict 一个检测项对「账号 × 模型」的当前结论

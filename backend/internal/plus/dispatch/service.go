@@ -30,6 +30,7 @@ type Service struct {
 	Detect   *DetectionLoader
 	Sched    *Scheduler
 	Library  *FingerprintLibrary
+	Preview  *Previewer
 	OnRules  func() // 权重设置变了：立即刷新钩子
 	LastSeen func(ctx context.Context) map[int64]time.Time
 	lastMu   sync.Mutex

@@ -62,7 +62,8 @@ type RunStore interface {
 	RecentRuns(ctx context.Context, perKey int) ([]Run, error)
 	RunStats(ctx context.Context, since time.Time) ([]RunStat, error)
 	LastRunAt(ctx context.Context) (map[string]time.Time, error) // 检测项|凭证|模型 → 最近一次排队时间
-	PruneRuns(ctx context.Context, before time.Time) error
+	// PruneRuns 清理检测记录：存档成功的作品每个 检测项 × 凭证 × 模型 只留最近 keepWorks 份（不看时间），其余的按时间清理
+	PruneRuns(ctx context.Context, before time.Time, keepWorks int) error
 }
 
 // Ignore 标为误报
@@ -185,4 +186,5 @@ type AuditStore interface {
 	AddAudit(ctx context.Context, e AuditEntry) error
 	ListAudit(ctx context.Context, f AuditFilter) ([]AuditEntry, int64, map[string]int64, error)
 	OperatorEmail(ctx context.Context, userID int64) string
+	PruneAudit(ctx context.Context, before time.Time) error
 }

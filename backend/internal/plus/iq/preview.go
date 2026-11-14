@@ -29,6 +29,7 @@ const PreviewBasePath = "/api/v1/plus/iq-preview"
 type Signer struct {
 	Secret []byte
 	Now    func() time.Time
+	Base   string // 预览接口路径，空 = PreviewBasePath（上游调度台用自己的路径和密钥）
 }
 
 func (s Signer) now() time.Time {
@@ -47,7 +48,11 @@ func (s Signer) mac(id int64, scope PreviewScope, exp int64) string {
 // URL 签发链接。过期时间取整到小时（1~2 小时有效），同一小时内链接不变，浏览器可以缓存。
 func (s Signer) URL(id int64, scope PreviewScope) string {
 	exp := s.now().Truncate(time.Hour).Add(2 * time.Hour).Unix()
-	return fmt.Sprintf("%s/%d?sc=%s&e=%d&s=%s", PreviewBasePath, id, scope, exp, s.mac(id, scope, exp))
+	base := s.Base
+	if base == "" {
+		base = PreviewBasePath
+	}
+	return fmt.Sprintf("%s/%d?sc=%s&e=%d&s=%s", base, id, scope, exp, s.mac(id, scope, exp))
 }
 
 // Verify 校验链接参数

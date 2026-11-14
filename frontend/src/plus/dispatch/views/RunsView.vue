@@ -1,4 +1,5 @@
-<!-- [plus] 上游调度台 · 检测记录：按检测项分开；按账号看（每个 账号 × 模型 一行：最近 12 次、结论、最近一次）或按时间看 -->
+<!-- [plus] 上游调度台 · 检测记录：按检测项分开；按账号看（每个 账号 × 模型 一行：最近 12 次、结论、最近一次）或按时间看。
+     存档题（检测方式声明 gallery）不判对错：一行直接显示最近几份作品的缩略图，没有「结论」列和结论筛选 -->
 <template>
   <AppLayout>
     <div class="space-y-4" data-testid="dispatch-runs">
@@ -11,7 +12,7 @@
             <button v-for="v in VIEWS" :key="v.k" type="button" class="rounded-md px-3 py-1 text-sm" :class="view === v.k ? 'bg-white font-medium shadow-sm dark:bg-dark-900' : 'text-gray-500'" @click="view = v.k; q.result = ''">{{ v.n }}</button>
           </div>
           <Select v-model="q.platform" :options="platformOptions" class="w-36" />
-          <Select v-model="q.result" :options="resultOptions" class="w-36" />
+          <Select v-if="!gallery" v-model="q.result" :options="resultOptions" class="w-36" />
           <div class="relative w-48">
             <Icon name="search" size="md" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input v-model="kw" class="input pl-10" placeholder="搜索账号" />
@@ -34,28 +35,34 @@
         <div class="card overflow-x-auto p-0">
           <div v-if="view === 'board' && !board" class="py-16 text-center text-sm text-gray-400">{{ error || '加载中…' }}</div>
           <table v-else-if="view === 'board'" class="table min-w-[1100px]">
-            <thead><tr><th>账号</th><th>模型</th><th>检测项</th><th>最近 12 次</th><th>结论</th><th>最近一次</th><th>频率</th><th></th></tr></thead>
+            <thead><tr><th>账号</th><th>模型</th><th>检测项</th><th>{{ gallery ? '最近作品' : '最近 12 次' }}</th><th v-if="!gallery">结论</th><th>最近一次</th><th>频率</th><th></th></tr></thead>
             <tbody>
               <tr v-for="r in board!.rows" :key="`${r.account_id}-${r.item_id}-${r.model}`" class="cursor-pointer" data-testid="dispatch-runs-row" @click="probe = { accountId: r.account_id, itemId: r.item_id, model: r.model }">
                 <td class="whitespace-nowrap"><div class="font-semibold">{{ r.account }}</div><div class="text-xs text-gray-500">{{ groupsText(r.group_ids) }}</div></td>
                 <td class="font-mono text-sm">{{ r.model }}</td>
                 <td class="whitespace-nowrap">{{ r.item }}</td>
                 <td>
-                  <span v-if="!r.dots.length" class="text-sm text-gray-400">还没测到</span>
+                  <div v-if="r.works?.length" class="flex gap-2" @click.stop>
+                    <button v-for="w in r.works" :key="w.id" type="button" class="w-28 shrink-0 overflow-hidden rounded-md border border-gray-200 text-left hover:border-primary-400 dark:border-dark-700" :title="`${dt(w.at)} · ${w.summary}`" @click="runId = w.id">
+                      <PreviewFrame :src="w.preview_url" thumb />
+                      <div class="truncate px-1 py-0.5 text-[11px] tabular-nums text-gray-500">{{ dt(w.at) }}</div>
+                    </button>
+                  </div>
+                  <span v-else-if="r.works" class="text-sm text-gray-400">{{ r.dots.length ? '还没有成功的作品' : '还没测到' }}</span>
+                  <span v-else-if="!r.dots.length" class="text-sm text-gray-400">还没测到</span>
                   <span v-else class="flex gap-[3px]"><i v-for="x in r.dots" :key="x.id" class="h-3.5 w-3.5 rounded-[4px]" :class="DOT_CLASS[x.outcome] ?? 'bg-gray-300'" :title="`${dt(x.at)} · ${x.summary}`" /></span>
                 </td>
-                <td class="whitespace-nowrap"><Tag v-bind="verdictTag(r)" /></td>
+                <td v-if="!gallery" class="whitespace-nowrap"><Tag v-if="!r.works" v-bind="verdictTag(r)" /><span v-else class="text-sm text-gray-400">不判对错</span></td>
                 <td class="max-w-[360px]">
                   <template v-if="r.last"><div class="text-xs tabular-nums">{{ dt(r.last.at) }}</div><div class="truncate text-xs text-gray-500" :title="r.last.summary">{{ r.last.summary }}</div></template>
                   <span v-else class="text-gray-400">—</span>
                 </td>
                 <td class="whitespace-nowrap text-sm text-gray-500">{{ everyText(r.every) }}</td>
                 <td class="whitespace-nowrap text-right" @click.stop>
-                  <button v-if="r.thumb" type="button" class="btn btn-secondary btn-sm mr-2" @click="runId = r.thumb!">看作品</button>
                   <button type="button" class="btn btn-secondary btn-sm" @click="retest(r)">再测</button>
                 </td>
               </tr>
-              <tr v-if="!board!.rows.length"><td colspan="8" class="py-14 text-center text-sm text-gray-400">没有符合条件的记录</td></tr>
+              <tr v-if="!board!.rows.length"><td :colspan="gallery ? 7 : 8" class="py-14 text-center text-sm text-gray-400">没有符合条件的记录</td></tr>
             </tbody>
           </table>
           <template v-else>
@@ -100,6 +107,7 @@ import Kpi from '../shared/Kpi.vue'
 import ProbeDialog from '../shared/ProbeDialog.vue'
 import RunDialog from '../shared/RunDialog.vue'
 import Tag from '../shared/Tag.vue'
+import PreviewFrame from '@/plus/iq/shared/PreviewFrame.vue'
 import { DOT_CLASS, TONE_CLASS, TRIGGER, dt, everyText, num, outcomeOf, platformName, tok } from '../shared/format'
 
 const VIEWS = [{ k: 'board' as const, n: '按账号' }, { k: 'list' as const, n: '按时间' }]
@@ -119,6 +127,8 @@ const runId = ref<number | null>(null)
 
 const tabs = computed(() => [{ id: 0, name: '全部' }, ...items.value.filter((i) => i.enabled).map((i) => ({ id: i.id, name: i.name }))])
 const specOf = (id: number) => items.value.find((i) => i.id === id)?.spec
+// 选中的检测项结果是作品（存档题）：显示缩略图，不显示结论
+const gallery = computed(() => view.value === 'board' && !!specOf(q.item_id)?.gallery)
 const itemName = (id: number) => items.value.find((i) => i.id === id)?.name ?? `#${id}`
 const groupsText = (ids: number[]) => {
   const n = (id: number) => board.value?.names.groups[String(id)] ?? `#${id}`
@@ -178,6 +188,10 @@ let timer: ReturnType<typeof setTimeout> | undefined
 watch(kw, (v) => {
   clearTimeout(timer)
   timer = setTimeout(() => (q.q = v), 300)
+})
+// 存档题没有结论筛选：切过去时清掉之前选的结论，不然会被一个看不见的筛选条件挡住
+watch(gallery, (g) => {
+  if (g) q.result = ''
 })
 watch([() => ({ ...q }), view], load, { immediate: true, deep: true })
 

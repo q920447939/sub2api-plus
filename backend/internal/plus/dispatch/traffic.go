@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sort"
+	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 // Agg 一段时间内（分组 × 账号 × 模型）的真实流量汇总
@@ -175,7 +179,8 @@ var metrics = []Metric{
 
 // TrafficStore 流量汇总的存取
 type TrafficStore interface {
-	Aggregate(ctx context.Context, from, to time.Time, hourly bool) (map[TKey]map[int64]Agg, error)
+	// Aggregate ignored = 渠道状态里设成「不算失败」的错误类别
+	Aggregate(ctx context.Context, from, to time.Time, hourly bool, ignored []string) (map[TKey]map[int64]Agg, error)
 	SaveHourly(ctx context.Context, from, to time.Time, rows map[TKey]map[int64]Agg) error
 	LoadHourly(ctx context.Context, from time.Time, groupID int64) (map[TKey]map[int64]Agg, error)
 	PruneHourly(ctx context.Context, before time.Time) error
@@ -202,44 +207,29 @@ WITH s AS (
   FROM usage_logs
   WHERE created_at >= $1 AND created_at < $2 AND group_id IS NOT NULL AND account_id > 0
   GROUP BY 1, 2, 3, 4
-), e AS (
-  SELECT %[1]s AS b, group_id, account_id, COALESCE(NULLIF(requested_model, ''), NULLIF(model, ''), '') AS model,
-         COUNT(*) FILTER (WHERE COALESCE(upstream_status_code, status_code) = 429) AS lim,
-         COUNT(*) FILTER (WHERE COALESCE(upstream_status_code, status_code) IS DISTINCT FROM 429) AS err
-  FROM ops_error_logs
-  WHERE created_at >= $1 AND created_at < $2 AND group_id IS NOT NULL AND account_id IS NOT NULL AND account_id > 0
-    AND NOT is_business_limited AND COALESCE(error_owner, '') <> 'client' AND NOT COALESCE(is_count_tokens, FALSE)
-    AND (error_phase IN ('upstream', 'network') OR COALESCE(upstream_status_code, status_code) >= 500
-         OR COALESCE(upstream_status_code, status_code) = 429)
-  GROUP BY 1, 2, 3, 4
 )
-SELECT COALESCE(s.b, e.b), COALESCE(s.group_id, e.group_id), COALESCE(s.account_id, e.account_id), COALESCE(s.model, e.model),
-       COALESCE(s.n, 0), COALESCE(e.err, 0), COALESCE(e.lim, 0), COALESCE(s.p90, 0), COALESCE(s.tn, 0),
-       COALESCE(s.p50, 0), COALESCE(s.ot, 0), COALESCE(s.gm, 0), COALESCE(s.cr, 0), COALESCE(s.ct, 0)
-FROM s FULL JOIN e ON s.b = e.b AND s.group_id = e.group_id AND s.account_id = e.account_id AND s.model = e.model`
+SELECT b, group_id, account_id, model, n, COALESCE(p90, 0), tn, COALESCE(p50, 0), ot, gm, cr, ct FROM s`
 
-func (t SQLTraffic) Aggregate(ctx context.Context, from, to time.Time, hourly bool) (map[TKey]map[int64]Agg, error) {
+// trafficErrSQL 上游侧的失败，一条一行：在 Go 里按渠道状态同一套分类器归类，「不算失败」的类别不计入
+// （分类器和渠道状态 V2 是同一个函数 service.ClassifyChannelMonitorV2Error，两边口径一致）
+const trafficErrSQL = `
+SELECT %[1]s AS b, group_id, account_id, COALESCE(NULLIF(requested_model, ''), NULLIF(model, ''), '') AS model,
+       COALESCE(status_code, 0), COALESCE(upstream_status_code, 0), COALESCE(error_type, ''), COALESCE(error_owner, ''),
+       COALESCE(error_source, ''),
+       left(CONCAT_WS(' ', error_message, upstream_error_message, upstream_error_detail, error_body), 4000)
+FROM ops_error_logs
+WHERE created_at >= $1 AND created_at < $2 AND group_id IS NOT NULL AND account_id IS NOT NULL AND account_id > 0
+  AND NOT is_business_limited AND COALESCE(error_owner, '') <> 'client' AND NOT COALESCE(is_count_tokens, FALSE)
+  AND (error_phase IN ('upstream', 'network') OR COALESCE(upstream_status_code, status_code) >= 500
+       OR COALESCE(upstream_status_code, status_code) = 429)`
+
+func (t SQLTraffic) Aggregate(ctx context.Context, from, to time.Time, hourly bool, ignored []string) (map[TKey]map[int64]Agg, error) {
 	bucket := "date_trunc('hour', created_at)"
 	if !hourly {
 		bucket = "$1::timestamptz"
 	}
-	rows, err := t.DB.QueryContext(ctx, fmt.Sprintf(trafficSQL, bucket), from, to)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
 	out := map[TKey]map[int64]Agg{}
-	for rows.Next() {
-		var (
-			b time.Time
-			k TKey
-			a Agg
-		)
-		if err := rows.Scan(&b, &k.Group, &k.Account, &k.Model, &a.Requests, &a.Errors, &a.Limited, &a.TTFTP90, &a.TTFTN,
-			&a.TTFTP50, &a.OutTokens, &a.GenMs, &a.CacheRead, &a.CacheTotal); err != nil {
-			return nil, err
-		}
-		a.P50N = a.TTFTN
+	add := func(b time.Time, k TKey, a Agg) {
 		m := out[k]
 		if m == nil {
 			m = map[int64]Agg{}
@@ -247,7 +237,56 @@ func (t SQLTraffic) Aggregate(ctx context.Context, from, to time.Time, hourly bo
 		}
 		m[b.Unix()] = m[b.Unix()].Add(a)
 	}
-	return out, rows.Err()
+	rows, err := t.DB.QueryContext(ctx, fmt.Sprintf(trafficSQL, bucket), from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			b time.Time
+			k TKey
+			a Agg
+		)
+		if err := rows.Scan(&b, &k.Group, &k.Account, &k.Model, &a.Requests, &a.TTFTP90, &a.TTFTN,
+			&a.TTFTP50, &a.OutTokens, &a.GenMs, &a.CacheRead, &a.CacheTotal); err != nil {
+			return nil, err
+		}
+		a.P50N = a.TTFTN
+		add(b, k, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	skip := map[string]bool{}
+	for _, c := range ignored {
+		skip[c] = true
+	}
+	erows, err := t.DB.QueryContext(ctx, fmt.Sprintf(trafficErrSQL, bucket), from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer erows.Close()
+	for erows.Next() {
+		var (
+			b  time.Time
+			k  TKey
+			in service.ChannelMonitorV2ErrorInput
+		)
+		if err := erows.Scan(&b, &k.Group, &k.Account, &k.Model, &in.StatusCode, &in.UpstreamStatusCode, &in.ErrorType,
+			&in.ErrorOwner, &in.ErrorSource, &in.Message); err != nil {
+			return nil, err
+		}
+		if skip[service.ClassifyChannelMonitorV2Error(in)] {
+			continue
+		}
+		if in.UpstreamStatusCode == 429 || (in.UpstreamStatusCode == 0 && in.StatusCode == 429) {
+			add(b, k, Agg{Limited: 1})
+		} else {
+			add(b, k, Agg{Errors: 1})
+		}
+	}
+	return out, erows.Err()
 }
 
 func (t SQLTraffic) SaveHourly(ctx context.Context, from, to time.Time, data map[TKey]map[int64]Agg) error {
@@ -331,8 +370,11 @@ func (t SQLTraffic) PruneHourly(ctx context.Context, before time.Time) error {
 
 // TrafficLoader 汇总 + 读取（带首次回填）
 type TrafficLoader struct {
-	Store    TrafficStore
+	Store TrafficStore
+	// Ignored 当前「不算失败」的错误类别（和健康分同一套规则）。变了以后按新口径重新回填 8 天
+	Ignored  func(ctx context.Context) []string
 	backfill bool
+	applied  string
 }
 
 const (
@@ -343,8 +385,18 @@ const (
 
 // Refresh 重算最近两个小时的小时桶（含当前小时）；第一次运行时回填 8 天
 func (l *TrafficLoader) Refresh(ctx context.Context, now time.Time) error {
+	var ignored []string
+	if l.Ignored != nil {
+		ignored = l.Ignored(ctx)
+	}
+	sorted := append([]string(nil), ignored...)
+	sort.Strings(sorted)
+	key := strings.Join(sorted, ",")
+	if l.backfill && key != l.applied {
+		log.Printf("[plus.dispatch] 不算失败的错误类别变了，按新口径重算 %d 天流量", int(trafficBackfill.Hours()/24))
+	}
 	from := now.Truncate(time.Hour).Add(-time.Hour)
-	if !l.backfill {
+	if !l.backfill || key != l.applied {
 		from = now.Truncate(time.Hour).Add(-trafficBackfill)
 	}
 	to := now.Truncate(time.Hour).Add(time.Hour)
@@ -354,7 +406,7 @@ func (l *TrafficLoader) Refresh(ctx context.Context, now time.Time) error {
 		if end.After(to) {
 			end = to
 		}
-		data, err := l.Store.Aggregate(ctx, start, end, true)
+		data, err := l.Store.Aggregate(ctx, start, end, true, ignored)
 		if err != nil {
 			return err
 		}
@@ -362,6 +414,7 @@ func (l *TrafficLoader) Refresh(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
+	l.applied = key
 	if !l.backfill {
 		l.backfill = true
 		if err := l.Store.PruneHourly(ctx, now.Add(-trafficRetention)); err != nil {

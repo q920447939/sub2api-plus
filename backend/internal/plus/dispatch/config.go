@@ -13,13 +13,15 @@ type Config struct {
 	Concurrency int  `json:"concurrency"`  // 主动检测的全局并发
 	IdleMinutes int  `json:"idle_minutes"` // 近 24 小时没有流量的备用号，多久测一次（不低于计划频率）
 	FaultRuns   int  `json:"fault_runs"`   // 检测请求连续出错几次算「测不了」
+	WorksKeep   int  `json:"works_keep"`   // 存档题每个 账号 × 模型 保留最近几份作品（只按份数，不按天数；生成失败的记录按 30 天清理）
+	AuditDays   int  `json:"audit_days"`   // 操作日志保留天数
 	// SameAsChannel 健康分和「渠道状态」用同一套规则（读渠道状态的配置）；关掉时用下面自己的
 	SameAsChannel bool                `json:"same_as_channel"`
 	Rules         channelstatus.Rules `json:"rules"`
 }
 
 func DefaultConfig() Config {
-	return Config{Detect: true, Apply: true, Concurrency: 4, IdleMinutes: 360, FaultRuns: 3,
+	return Config{Detect: true, Apply: true, Concurrency: 4, IdleMinutes: 360, FaultRuns: 3, WorksKeep: 20, AuditDays: 30,
 		SameAsChannel: true, Rules: channelstatus.DefaultRules()}
 }
 
@@ -36,6 +38,18 @@ func (c *Config) normalize() error {
 	}
 	if c.FaultRuns <= 0 || c.FaultRuns > 50 {
 		c.FaultRuns = d.FaultRuns
+	}
+	if c.WorksKeep <= 0 {
+		c.WorksKeep = d.WorksKeep
+	}
+	if c.WorksKeep > 500 {
+		c.WorksKeep = 500
+	}
+	if c.AuditDays <= 0 {
+		c.AuditDays = d.AuditDays
+	}
+	if c.AuditDays > 3650 {
+		c.AuditDays = 3650
 	}
 	r := &c.Rules
 	if r.UpMin == 0 && r.WarnMin == 0 && r.MinSample == 0 {

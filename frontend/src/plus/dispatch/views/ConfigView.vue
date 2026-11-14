@@ -59,6 +59,13 @@
           <Row label="连续出错">检测请求连着 <NumInput :value="cfg.config.fault_runs" @change="saveCfg({ fault_runs: $event })" /> 次出错算「测不了」</Row>
         </div>
 
+        <div class="px-1 pt-2 text-sm text-gray-500">保留多久</div>
+        <div class="card divide-y divide-gray-100 dark:divide-dark-700">
+          <Row label="作品（存档题）">每个账号 × 模型留最近 <NumInput :value="cfg.config.works_keep" @change="saveCfg({ works_keep: $event })" /> 份，更早的删掉（不按天数；生成失败的记录跟其他检测记录一样留 30 天）</Row>
+          <Row label="其他检测记录"><span class="text-gray-900 dark:text-white">30 天</span></Row>
+          <Row label="操作日志">留 <NumInput :value="cfg.config.audit_days" @change="saveCfg({ audit_days: $event })" /> 天</Row>
+        </div>
+
         <div class="flex flex-wrap items-center gap-3 px-1 pt-2 text-sm text-gray-500">
           健康分
           <span class="ml-auto inline-flex items-center gap-3 text-xs">
