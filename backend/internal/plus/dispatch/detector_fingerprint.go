@@ -2,14 +2,15 @@ package dispatch
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,14 +18,25 @@ import (
 	lmfpd "github.com/Ikaleio/lm-detector/sdk/go"
 )
 
-// FingerprintLibrary lm-detector 参考库（懒加载，失败后 10 分钟内不重试）
+// FingerprintLibrary lm-detector 参考库。
+// 同步分两层：SDK 负责磁盘缓存（超过 24 小时在后台比对 SHA256，有新版才下载分片并覆盖缓存文件）；
+// 这里负责把缓存加载进内存，并定期检查缓存文件有没有变，变了就重新加载、原子替换。
+// 重新加载失败时继续用旧库，检测不中断。
 type FingerprintLibrary struct {
-	mu       sync.Mutex
-	det      *lmfpd.Detector
-	models   map[string]string // 归一化 id → 原始 id
-	failedAt time.Time
-	lastErr  error
+	mu          sync.Mutex
+	det         *lmfpd.Detector
+	models      map[string]string // 归一化 id → 原始 id
+	builtAt     string            // 参考库建库时间（版本标识）
+	loadedMtime time.Time         // 上次加载时缓存文件的修改时间
+	failedAt    time.Time
+	lastErr     error
+	reloading   bool
 }
+
+const (
+	libraryTTL        = 24 * time.Hour // SDK 多久去源站比对一次版本
+	libraryCheckEvery = time.Hour      // 多久检查一次磁盘缓存有没有变
+)
 
 var dateSuffix = regexp.MustCompile(`-(\d{8}|latest)$`)
 
@@ -38,6 +50,7 @@ func normalizeModel(m string) string {
 	return dateSuffix.ReplaceAllString(m, "")
 }
 
+// fingerprintCachePath 缓存文件路径（总是显式给出，这样能看它的修改时间判断有没有更新）
 func fingerprintCachePath() string {
 	if p := os.Getenv("PLUS_LMFPD_CACHE"); p != "" {
 		return p
@@ -45,7 +58,38 @@ func fingerprintCachePath() string {
 	if st, err := os.Stat("/app/data"); err == nil && st.IsDir() {
 		return "/app/data/plus_lmfpd/data.bin"
 	}
-	return "" // SDK 默认的系统缓存目录
+	if dir, err := os.UserCacheDir(); err == nil {
+		return filepath.Join(dir, "plus_lmfpd", "data.bin")
+	}
+	return filepath.Join(os.TempDir(), "plus_lmfpd", "data.bin")
+}
+
+func fileMtime(path string) time.Time {
+	if st, err := os.Stat(path); err == nil {
+		return st.ModTime()
+	}
+	return time.Time{}
+}
+
+// load 调 SDK 加载一次（有缓存时不联网；缓存超过 TTL 会顺带触发 SDK 的后台版本比对）
+func loadLibrary(ctx context.Context) (*lmfpd.Detector, map[string]string, time.Time, error) {
+	cache := fingerprintCachePath()
+	_ = os.MkdirAll(filepath.Dir(cache), 0o755)
+	mtime := fileMtime(cache) // 先记下来：SDK 后台更新会改掉它，下一轮检查时就会重新加载
+	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	det, err := lmfpd.Load(lctx, lmfpd.LoadOptions{Cache: cache, TTL: libraryTTL})
+	if err != nil {
+		return nil, nil, mtime, err
+	}
+	if mtime.IsZero() { // 第一次下载：文件是 Load 刚写的
+		mtime = fileMtime(cache)
+	}
+	models := cachedModels(cache)
+	if models == nil {
+		models = fetchLibraryModels(lctx)
+	}
+	return det, models, mtime, nil
 }
 
 func (l *FingerprintLibrary) get(ctx context.Context) (*lmfpd.Detector, error) {
@@ -57,25 +101,124 @@ func (l *FingerprintLibrary) get(ctx context.Context) (*lmfpd.Detector, error) {
 	if !l.failedAt.IsZero() && time.Since(l.failedAt) < 10*time.Minute {
 		return nil, fmt.Errorf("指纹参考库加载失败（%v），10 分钟后重试", l.lastErr)
 	}
-	cache := fingerprintCachePath()
-	if cache != "" {
-		_ = os.MkdirAll(filepath.Dir(cache), 0o755)
-	}
-	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	det, err := lmfpd.Load(lctx, lmfpd.LoadOptions{Cache: cache})
+	det, models, mtime, err := loadLibrary(ctx)
 	if err != nil {
 		l.failedAt, l.lastErr = time.Now(), err
 		return nil, fmt.Errorf("指纹参考库加载失败：%w", err)
 	}
-	l.det = det
-	if l.models == nil {
-		l.models = fetchLibraryModels(lctx)
-	}
+	l.swap(det, models, mtime)
 	return det, nil
 }
 
-// fetchLibraryModels 参考库收录的模型（读 bundle.json；失败时返回 nil，表示未知）
+// swap 换上新库（调用方持锁）
+func (l *FingerprintLibrary) swap(det *lmfpd.Detector, models map[string]string, mtime time.Time) {
+	if l.det != nil && det.BuiltAt() != l.builtAt {
+		log.Printf("[plus.dispatch] 指纹参考库已更新：%s → %s，收录 %d 个模型", l.builtAt, det.BuiltAt(), len(models))
+	}
+	l.det, l.builtAt, l.loadedMtime = det, det.BuiltAt(), mtime
+	if models != nil {
+		l.models = models
+	}
+}
+
+// Start 后台定期检查：启动时预加载一次，之后每小时看缓存文件，
+// 文件变了（SDK 已下载新版）或超过 TTL（需要让 SDK 去比对版本）就重新加载。
+func (l *FingerprintLibrary) Start(ctx context.Context) {
+	go func() {
+		if _, err := l.get(ctx); err != nil {
+			log.Printf("[plus.dispatch] %v", err)
+		}
+		t := time.NewTicker(libraryCheckEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				l.maybeReload(ctx)
+			}
+		}
+	}()
+}
+
+func (l *FingerprintLibrary) maybeReload(ctx context.Context) {
+	l.mu.Lock()
+	if l.det == nil {
+		l.mu.Unlock()
+		_, _ = l.get(ctx) // 还没加载成功过：按失败退避重试
+		return
+	}
+	mtime := fileMtime(fingerprintCachePath())
+	due := !mtime.Equal(l.loadedMtime) || time.Since(mtime) >= libraryTTL
+	if !due || l.reloading {
+		l.mu.Unlock()
+		return
+	}
+	l.reloading = true
+	l.mu.Unlock()
+
+	det, models, loadedAt, err := loadLibrary(ctx) // 加载期间检测照常用旧库
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.reloading = false
+	if err != nil {
+		log.Printf("[plus.dispatch] 指纹参考库重新加载失败，继续用旧库：%v", err)
+		return
+	}
+	l.swap(det, models, loadedAt)
+}
+
+// BuiltAt 当前参考库的建库时间（未加载时为空）
+func (l *FingerprintLibrary) BuiltAt() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.builtAt
+}
+
+type libraryBundle struct {
+	Models []struct {
+		ID string `json:"id"`
+	} `json:"models"`
+}
+
+func bundleModels(b libraryBundle) map[string]string {
+	if len(b.Models) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for _, m := range b.Models {
+		out[normalizeModel(m.ID)] = m.ID
+	}
+	return out
+}
+
+// cachedModels 从缓存文件里读收录的模型（文件格式：u32 小端长度 + bundle.json + 检测器），读不到返回 nil
+func cachedModels(path string) map[string]string {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = f.Close() }()
+	var hdr [4]byte
+	if _, err := io.ReadFull(f, hdr[:]); err != nil {
+		return nil
+	}
+	n := binary.LittleEndian.Uint32(hdr[:])
+	if n == 0 || n > 16<<20 {
+		return nil
+	}
+	buf := make([]byte, n)
+	if _, err := io.ReadFull(f, buf); err != nil {
+		return nil
+	}
+	var b libraryBundle
+	if json.Unmarshal(buf, &b) != nil {
+		return nil
+	}
+	return bundleModels(b)
+}
+
+// fetchLibraryModels 参考库收录的模型（缓存里读不到时从源站读 bundle.json；失败时返回 nil，表示未知）
 func fetchLibraryModels(ctx context.Context) map[string]string {
 	for _, base := range lmfpd.DefaultDataURLs {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/bundle.json", nil)
@@ -88,19 +231,13 @@ func fetchLibraryModels(ctx context.Context) map[string]string {
 		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		_ = resp.Body.Close()
-		var b struct {
-			Models []struct {
-				ID string `json:"id"`
-			} `json:"models"`
-		}
-		if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &b) != nil || len(b.Models) == 0 {
+		var b libraryBundle
+		if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &b) != nil {
 			continue
 		}
-		out := map[string]string{}
-		for _, m := range b.Models {
-			out[normalizeModel(m.ID)] = m.ID
+		if out := bundleModels(b); out != nil {
+			return out
 		}
-		return out
 	}
 	return nil
 }
@@ -124,15 +261,20 @@ func (l *FingerprintLibrary) learn(results []lmfpd.AnalysisResult) {
 	}
 }
 
-// FingerprintRule 判定规则
+// FingerprintRule 判定规则：最近 window 次有效结果里有 bad_min 次识别成别的模型 → 未通过；置信度低于 min_confidence 的那次不算
 type FingerprintRule struct {
-	BadConsecutive int     `json:"bad_consecutive"` // 连续几次识别成别的模型记异常（1 次起记可疑）
-	MinConfidence  float64 `json:"min_confidence"`  // 置信度低于这个百分比的结果不计入
+	WindowRule
+	BadMin        int     `json:"bad_min"`
+	MinConfidence float64 `json:"min_confidence"`
 }
 
 func (r *FingerprintRule) normalize() {
-	if r.BadConsecutive <= 0 {
-		r.BadConsecutive = 3
+	r.WindowRule.normalize(3)
+	if r.BadMin <= 0 {
+		r.BadMin = 3
+	}
+	if r.BadMin > r.Window {
+		r.BadMin = r.Window
 	}
 	if r.MinConfidence <= 0 || r.MinConfidence > 100 {
 		r.MinConfidence = 60
@@ -145,18 +287,18 @@ type FingerprintDetector struct {
 	Library *FingerprintLibrary
 }
 
-var _ ActiveDetector = (*FingerprintDetector)(nil)
+var _ Detector = (*FingerprintDetector)(nil)
 
 func (d *FingerprintDetector) Spec() TypeSpec {
 	return TypeSpec{
-		Key: "fingerprint", Name: "模型指纹识别", Active: true, Judges: true,
+		Key: "fingerprint", Name: "模型指纹识别", Judges: true, DefaultEvery: 60,
 		Description: "让模型凭第一反应写约 300 个 1–355 的整数（每次 3 道），按它偏好的数字和参考库比对，识别它实际是哪个模型。基于 lm-detector（MIT）。",
-		Supports:    "参考库收录的模型（按版本收录，库里没有的版本测不了）",
-		JudgeDesc:   "连续 N 次识别成别的模型；置信度低的不计入",
-		PlanFields:  []string{"models", "pick", "every", "timeout"},
+		RuleText:    "最近 {window} 次有效结果里有 {bad_min} 次识别成别的模型算未通过；置信度低于 {min_confidence}% 的那次不算；满 {min_valid} 次才下结论",
+		RuleFields:  []RuleField{{Key: "window", Min: 1, Max: 50}, {Key: "bad_min", Min: 1, Max: 50}, {Key: "min_confidence", Min: 1, Max: 100, Unit: "%"}, {Key: "min_valid", Min: 1, Max: 50}},
 		Outcomes: []OutcomeSpec{
 			{Key: OutcomePass, Label: "和声称的一致", Tone: "ok"},
 			{Key: OutcomeFail, Label: "识别为其他模型", Tone: "bad"},
+			{Key: OutcomeIgnored, Label: "已标误报", Tone: "few"},
 			{Key: OutcomeLow, Label: "置信度不够", Tone: "few"},
 			{Key: OutcomeSkipped, Label: "参考库没有这个模型", Tone: "few"},
 			{Key: OutcomeError, Label: "请求出错", Tone: "err"},
@@ -285,19 +427,31 @@ func (d *FingerprintDetector) Execute(ctx context.Context, in ExecInput) ExecRes
 		return res
 	}
 	res.Outcome = d.Classify(in.Item, Run{Detail: res.Detail})
-	switch res.Outcome {
-	case OutcomePass:
-		res.Summary = fmt.Sprintf("识别为 %s（置信 %.0f%%），和声称的一致", an.Prediction, conf)
-	case OutcomeFail:
-		res.Summary = fmt.Sprintf("声称 %s，识别为 %s（置信 %.0f%%）", declared, an.Prediction, conf)
-	default:
-		if confKnown {
-			res.Summary = fmt.Sprintf("最像 %s，但置信只有 %.0f%%", an.Prediction, conf)
-		} else {
-			res.Summary = fmt.Sprintf("最像 %s，但只有 %d 条有效回答，没有置信度，不计入", an.Prediction, an.UsedOutputs)
-		}
-	}
+	res.Summary = d.Describe(res.Outcome, res.Detail)
 	return res
+}
+
+// Describe 按归类结果写一句话（规则改了以后历史记录的说法跟着变）
+func (d *FingerprintDetector) Describe(outcome string, detail map[string]any) string {
+	pred, _ := detail["prediction"].(string)
+	declared, _ := detail["declared"].(string)
+	conf, confKnown := detail["confidence"].(float64)
+	used := 0
+	if v, ok := detail["used_outputs"].(float64); ok {
+		used = int(v)
+	} else if v, ok := detail["used_outputs"].(int); ok {
+		used = v
+	}
+	switch outcome {
+	case OutcomePass:
+		return fmt.Sprintf("识别为 %s（置信 %.0f%%），和声称的一致", pred, conf)
+	case OutcomeFail, OutcomeIgnored:
+		return fmt.Sprintf("声称 %s，识别为 %s（置信 %.0f%%）", declared, pred, conf)
+	}
+	if confKnown {
+		return fmt.Sprintf("最像 %s，但置信只有 %.0f%%", pred, conf)
+	}
+	return fmt.Sprintf("最像 %s，但只有 %d 条有效回答，没有置信度，不计入", pred, used)
 }
 
 func (d *FingerprintDetector) classify(r FingerprintRule, match, confKnown bool, conf float64) string {
@@ -325,68 +479,61 @@ func (d *FingerprintDetector) Classify(item Item, run Run) string {
 	return d.classify(r, match, confKnown, conf)
 }
 
-func (d *FingerprintDetector) Judge(env *JudgeEnv, item Item, s Subject) Verdict {
+func (d *FingerprintDetector) Judge(item Item, rs []Run) *Verdict {
 	var r FingerprintRule
 	_ = json.Unmarshal(item.Rule, &r)
 	r.normalize()
-	rs := env.RunsOf(item.ID, s.CredKey, s.Model)
-	if len(rs) == 0 {
-		return Verdict{Level: LevelNone, Short: "还没执行", Long: "计划已覆盖，还没执行过"}
-	}
-	var valid []Run
-	for _, run := range rs {
-		if c := d.Classify(item, run); c == OutcomePass || c == OutcomeFail {
-			valid = append(valid, run)
+	valid, ignored := validRuns(rs, r.Window)
+	var bad []string
+	for _, x := range valid {
+		if x.Outcome == OutcomeFail {
+			p, _ := x.Detail["prediction"].(string)
+			bad = append(bad, p)
 		}
 	}
-	if len(valid) == 0 {
-		if rs[0].Outcome == OutcomeSkipped {
-			return Verdict{Level: LevelNone, Short: "测不了", Long: rs[0].Summary}
+	n := len(valid)
+	v := &Verdict{Valid: n, Bad: len(bad), Ignored: ignored > 0}
+	switch {
+	case len(bad) >= r.BadMin:
+		// 多数时候识别成同一个模型才说「像谁」；每次都不一样就只说不像
+		like, k := mostCommon(bad)
+		v.Level = LevelBad
+		if like != "" && k*2 > len(bad) {
+			v.Short = "像 " + like
+			v.Long = fmt.Sprintf("最近 %d 次有效结果里 %d 次识别成 %s", n, len(bad), like)
+		} else {
+			v.Short = "不像声称的模型"
+			v.Long = fmt.Sprintf("最近 %d 次有效结果里 %d 次识别成别的模型（%s）", n, len(bad), strings.Join(uniq(bad, 3), "、"))
 		}
-		return Verdict{Level: LevelFew, Short: "无有效结果", Long: "还没有有效结果（都出错或置信度太低）" + staleNote(rs)}
-	}
-	streak := 0
-	for _, run := range valid {
-		if d.Classify(item, run) != OutcomeFail {
-			break
+	case n < r.MinValid:
+		if n == 0 && len(rs) > 0 && rs[0].Outcome == OutcomeSkipped {
+			return &Verdict{Level: LevelFew, Short: "测不了", Long: rs[0].Summary}
 		}
-		streak++
+		f := fewVerdict(n, r.MinValid)
+		f.Bad, f.Ignored = len(bad), ignored > 0
+		return f
+	case len(bad) > 0:
+		v.Level, v.Short = LevelOK, fmt.Sprintf("%d 次里 %d 次不一致", n, len(bad))
+		v.Long = fmt.Sprintf("最近 %d 次有效结果里 %d 次识别成别的模型，没到 %d 次", n, len(bad), r.BadMin)
+	default:
+		v.Level, v.Short, v.Long = LevelOK, "和声称的一致", fmt.Sprintf("最近 %d 次有效结果都和声称的一致", n)
 	}
-	last := valid[0]
-	pred, _ := last.Detail["prediction"].(string)
-	conf, _ := last.Detail["confidence"].(float64)
-	dist := map[string]int{}
-	for i, run := range valid {
-		if i >= 30 {
-			break
+	return v
+}
+
+// uniq 去重后最多取 n 个，多出来的写「等」
+func uniq(vs []string, n int) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, v := range vs {
+		if v == "" || seen[v] {
+			continue
 		}
-		p, _ := run.Detail["prediction"].(string)
-		dist[p]++
+		seen[v] = true
+		out = append(out, v)
 	}
-	type kv struct {
-		Model string `json:"model"`
-		N     int    `json:"n"`
+	if len(out) > n {
+		out = append(out[:n], "等")
 	}
-	var ds []kv
-	for k, v := range dist {
-		ds = append(ds, kv{k, v})
-	}
-	sort.Slice(ds, func(i, j int) bool { return ds[i].N > ds[j].N })
-	ev := map[string]any{"streak": streak, "bad_consecutive": r.BadConsecutive, "distribution": ds, "errors": leadingErrors(rs)}
-	if streak == 0 {
-		return Verdict{Level: LevelOK, Short: "和声称的一致", Evidence: ev,
-			Long: fmt.Sprintf("最近一次识别为 %s（置信 %.0f%%），和声称的一致%s", pred, conf, staleNote(rs))}
-	}
-	lv := LevelWarn
-	if streak >= r.BadConsecutive {
-		lv = LevelBad
-	}
-	long := fmt.Sprintf("声称 %s，最近 %d 次都识别为 %s（置信 %.0f%%）", s.Model, streak, pred, conf)
-	if streak == 1 {
-		long = fmt.Sprintf("声称 %s，最近一次识别为 %s（置信 %.0f%%）", s.Model, pred, conf)
-	}
-	if lv == LevelWarn {
-		long += fmt.Sprintf("；连续 %d 次才判异常", r.BadConsecutive)
-	}
-	return Verdict{Level: lv, Short: "像 " + pred, Long: long + staleNote(rs), Evidence: ev}
+	return out
 }

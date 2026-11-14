@@ -91,8 +91,10 @@ git push origin --delete plus/v0.2.15-plus.1      # 删远端（不会触发 CI�
 | `internal/server/router.go` | import `plus`，`registerRoutes` 末尾加 `plus.RegisterRoutes(...)` |
 | `internal/service/setting_public.go` | `filterUserVisibleMenuItems` 剥离 `plus_config`；`parseCustomMenuItemURLs` 支持 `plus:` |
 | `internal/service/gateway_scheduling.go` | 上游调度台钩子：`listSchedulableAccounts`、`isAccountInGroup` 两个函数声明改名为 `xxxUpstream`（原名在 `plus_dispatch_hook.go` 里包一层）。冲突时取上游版本，再把这两行声明改回 `xxxUpstream` |
-| `internal/service/openai_gateway_scheduling.go` | 同上：`listSchedulableAccounts`、`openAIAccountMatchesSchedulingGroup` 改名为 `xxxUpstream` |
+| `internal/service/openai_gateway_scheduling.go` | 同上：`listSchedulableAccounts` 改名为 `xxxUpstream`（`openAIAccountMatchesSchedulingGroup` 不挂钩子：查库复核每个候选都会调，在那里认暂停会把「只剩暂停的、照常保留」的候选全部拒掉） |
 | `internal/service/gemini_messages_compat_service.go` | 同上：`listSchedulableAccountsOnce`、`tryStickySessionHit` 改名为 `xxxUpstream` |
+| `internal/service/openai_sticky_compat.go` | 同上：`getStickySessionAccountID` 改名为 `xxxUpstream`（OpenAI 所有粘性路径读绑定的地方，按模型认暂停） |
+| `internal/service/openai_ws_forwarder_support.go` | 同上：`resolveAccountByPreviousResponseIDForCapability` 改名为 `xxxUpstream`（previous_response 续链按模型认暂停） |
 | `go.mod` / `go.sum` | 新增依赖 `github.com/Ikaleio/lm-detector/sdk/go`（数字指纹，MIT），连带 `klauspost/compress` 1.18.2 → 1.18.4 |
 
 **前端**
@@ -119,6 +121,7 @@ backend/internal/plus/dispatch/     上游调度台全部后端代码（hook/ �
 backend/internal/service/plus_dispatch_hook.go   选号钩子（6 个改名函数的原名实现）
 backend/migrations/259_plus_dispatch.sql
 backend/migrations/260_plus_dispatch_reference_defaults.sql   流量类参照默认值（至少 1 家可比；报错率 / 限流率按绝对值兜底）
+backend/migrations/261_plus_dispatch_v2.sql   上游调度台 v2（体检按账号 × 模型、权重按分组 × 模型）
 frontend/src/plus/dispatch/         上游调度台全部前端代码
 frontend/src/plus/iq/            智商检测全部前端代码（user/ admin/ shared/）
 backend/internal/service/plus_bridge.go

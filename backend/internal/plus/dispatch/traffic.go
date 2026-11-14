@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"sort"
 	"time"
 )
 
@@ -15,26 +14,34 @@ type Agg struct {
 	Requests   int64   `json:"requests"` // 成功
 	Errors     int64   `json:"errors"`   // 上游 5xx / 超时 / 连接中断（不含用户侧错误、429）
 	Limited    int64   `json:"limited"`  // 上游 429
-	TTFTP90    float64 `json:"ttft_p90"` // 毫秒
-	TTFTN      int64   `json:"ttft_n"`
-	OutTokens  int64   `json:"out_tokens"`
-	GenMs      int64   `json:"gen_ms"`
-	CacheRead  int64   `json:"cache_read"`
-	CacheTotal int64   `json:"cache_total"`
+	TTFTP90    float64 `json:"-"`        // 毫秒（近似：按样本数加权合并）
+	TTFTN      int64   `json:"-"`
+	TTFTP50    float64 `json:"-"` // 毫秒（健康分用的口径，和渠道状态一致）
+	P50N       int64   `json:"-"`
+	OutTokens  int64   `json:"-"` // 只统计流式、输出不少于 50 token 的请求（回答太短时「输出 ÷ 用时」没有意义）
+	GenMs      int64   `json:"-"`
+	CacheRead  int64   `json:"-"`
+	CacheTotal int64   `json:"-"`
 }
 
 // Total 所有请求（成功 + 出错 + 限流）
 func (a Agg) Total() int64 { return a.Requests + a.Errors + a.Limited }
 
-// Add 合并（p90 按样本数加权，近似值）
+// Failed 没接住的请求（出错 + 限流）
+func (a Agg) Failed() int64 { return a.Errors + a.Limited }
+
+// Add 合并（分位数按样本数加权，近似值）
 func (a Agg) Add(b Agg) Agg {
 	out := Agg{
 		Requests: a.Requests + b.Requests, Errors: a.Errors + b.Errors, Limited: a.Limited + b.Limited,
-		TTFTN: a.TTFTN + b.TTFTN, OutTokens: a.OutTokens + b.OutTokens, GenMs: a.GenMs + b.GenMs,
+		TTFTN: a.TTFTN + b.TTFTN, P50N: a.P50N + b.P50N, OutTokens: a.OutTokens + b.OutTokens, GenMs: a.GenMs + b.GenMs,
 		CacheRead: a.CacheRead + b.CacheRead, CacheTotal: a.CacheTotal + b.CacheTotal,
 	}
 	if out.TTFTN > 0 {
 		out.TTFTP90 = (a.TTFTP90*float64(a.TTFTN) + b.TTFTP90*float64(b.TTFTN)) / float64(out.TTFTN)
+	}
+	if out.P50N > 0 {
+		out.TTFTP50 = (a.TTFTP50*float64(a.P50N) + b.TTFTP50*float64(b.P50N)) / float64(out.P50N)
 	}
 	return out
 }
@@ -46,190 +53,122 @@ type TKey struct {
 	Model   string
 }
 
-// TrafficSet 判定用的流量数据：最近 8 天的小时桶 + 最近 60 分钟的滚动值
+// TRow 一个小时桶
+type TRow struct {
+	Bucket int64 // unix 秒，整点
+	TKey
+	Agg
+}
+
+// TFilter 取数条件（零值 = 不限）
+type TFilter struct {
+	Account  int64
+	Group    int64
+	Model    string
+	Accounts map[int64]bool
+	Groups   map[int64]bool
+	Models   map[string]bool
+	From     int64 // [From, To)
+	To       int64
+}
+
+func (f TFilter) match(r *TRow) bool {
+	return (f.Account == 0 || r.Account == f.Account) && (f.Group == 0 || r.Group == f.Group) &&
+		(f.Model == "" || r.Model == f.Model) && (f.Accounts == nil || f.Accounts[r.Account]) &&
+		(f.Groups == nil || f.Groups[r.Group]) && (f.Models == nil || f.Models[r.Model]) &&
+		(f.From == 0 || r.Bucket >= f.From) && (f.To == 0 || r.Bucket < f.To)
+}
+
+// TrafficSet 最近一个月的小时桶（含当前不满一小时的桶），按账号、分组建了索引
 type TrafficSet struct {
-	Hourly map[TKey]map[int64]Agg // bucket(unix 秒) → 汇总
-	Now    map[TKey]Agg
-	NowAt  time.Time
+	NowAt   time.Time
+	Rows    []TRow
+	byAcc   map[int64][]int
+	byGroup map[int64][]int
 }
 
-func newTrafficSet(now time.Time) *TrafficSet {
-	return &TrafficSet{Hourly: map[TKey]map[int64]Agg{}, Now: map[TKey]Agg{}, NowAt: now}
+// NewTrafficSet 由小时桶建索引
+func NewTrafficSet(now time.Time, rows []TRow) *TrafficSet {
+	t := &TrafficSet{NowAt: now, Rows: rows, byAcc: map[int64][]int{}, byGroup: map[int64][]int{}}
+	for i := range rows {
+		t.byAcc[rows[i].Account] = append(t.byAcc[rows[i].Account], i)
+		t.byGroup[rows[i].Group] = append(t.byGroup[rows[i].Group], i)
+	}
+	return t
 }
 
-// Range 某对象在 [from, to) 的小时桶合计
-func (t *TrafficSet) Range(k TKey, from, to time.Time) Agg {
+// NowBucket 当前（不满一小时的）桶
+func (t *TrafficSet) NowBucket() int64 { return t.NowAt.Truncate(time.Hour).Unix() }
+
+// Each 遍历符合条件的桶
+func (t *TrafficSet) Each(f TFilter, fn func(r *TRow)) {
+	visit := func(i int) {
+		if r := &t.Rows[i]; f.match(r) {
+			fn(r)
+		}
+	}
+	switch {
+	case f.Account != 0:
+		for _, i := range t.byAcc[f.Account] {
+			visit(i)
+		}
+	case f.Group != 0:
+		for _, i := range t.byGroup[f.Group] {
+			visit(i)
+		}
+	default:
+		for i := range t.Rows {
+			visit(i)
+		}
+	}
+}
+
+// Sum 合计
+func (t *TrafficSet) Sum(f TFilter) Agg {
 	var out Agg
-	for b, a := range t.Hourly[k] {
-		if b >= from.Unix() && b < to.Unix() {
-			out = out.Add(a)
-		}
-	}
+	t.Each(f, func(r *TRow) { out = out.Add(r.Agg) })
 	return out
 }
 
-// Keys 所有对象
-func (t *TrafficSet) Keys() []TKey {
-	seen := map[TKey]bool{}
-	var out []TKey
-	for k := range t.Hourly {
-		seen[k] = true
-		out = append(out, k)
-	}
-	for k := range t.Now {
-		if !seen[k] {
-			out = append(out, k)
-		}
-	}
-	return out
-}
+// ---------- 指标 ----------
 
-// GroupShares 分组里各账号近 24 小时的请求占比（%）
-func (t *TrafficSet) GroupShares(groupID int64) (map[int64]float64, int64) {
-	from := t.NowAt.Add(-24 * time.Hour)
-	per := map[int64]int64{}
-	var total int64
-	for _, k := range t.Keys() {
-		if k.Group != groupID {
-			continue
-		}
-		n := t.Range(k, from.Truncate(time.Hour), t.NowAt.Add(time.Hour)).Total()
-		per[k.Account] += n
-		total += n
-	}
-	out := map[int64]float64{}
-	for a, n := range per {
-		if total > 0 {
-			out[a] = float64(n) * 100 / float64(total)
-		}
-	}
-	return out, total
-}
-
-// GroupModelShares 分组里各模型近 24 小时的请求占比（%）
-func (t *TrafficSet) GroupModelShares(groupID int64) map[string]float64 {
-	from := t.NowAt.Add(-24 * time.Hour).Truncate(time.Hour)
-	per := map[string]int64{}
-	var total int64
-	for _, k := range t.Keys() {
-		if k.Group != groupID {
-			continue
-		}
-		n := t.Range(k, from, t.NowAt.Add(time.Hour)).Total()
-		per[k.Model] += n
-		total += n
-	}
-	out := map[string]float64{}
-	for m, n := range per {
-		if total > 0 && n > 0 {
-			out[m] = float64(n) * 100 / float64(total)
-		}
-	}
-	return out
-}
-
-// ---------- 指标定义（流量统计类型的「指标库」） ----------
-
-// Metric 一个流量指标
+// Metric 一个流量指标（账号详情、调整前后对比逐项列出）
 type Metric struct {
-	Key    string `json:"key"`
-	Name   string `json:"name"`
-	Unit   string `json:"unit"`   // % | s | tok/s
-	Better string `json:"better"` // low | high
-	Dec    int    `json:"dec"`
-	Desc   string `json:"desc"`
-	// Counted 指标是「出问题的请求占比」：判定时还要求出问题的请求够一定次数（避免 1 次偶发就报警）
-	Counted bool `json:"counted"`
-	Rule    TrafficRule
-	value   func(a Agg) (float64, bool)
-	count   func(a Agg) int64
-}
-
-// ProblemCount 出问题的请求次数（不是计数类指标时 ok=false）
-func (m Metric) ProblemCount(a Agg) (int64, bool) {
-	if m.count == nil {
-		return 0, false
-	}
-	return m.count(a), true
+	Key    string  `json:"key"`
+	Name   string  `json:"name"`
+	Unit   string  `json:"unit"`   // % | s | tok/s
+	Better string  `json:"better"` // low | high
+	Abs    float64 `json:"-"`      // 前后对比：绝对变化多少才算数（百分点 / 秒）
+	Rel    float64 `json:"-"`      // 或相对变化多少才算数
+	value  func(a Agg) (float64, bool)
 }
 
 // Value 指标值；样本不够算不出时 ok=false
 func (m Metric) Value(a Agg) (float64, bool) { return m.value(a) }
 
-// Format 带单位的展示
-func (m Metric) Format(v float64) string {
-	switch m.Unit {
-	case "%":
-		return fmt.Sprintf("%.*f%%", m.Dec, v)
-	case "s":
-		return fmt.Sprintf("%.1f 秒", v)
+func pctOf(n, d int64) (float64, bool) {
+	if d <= 0 {
+		return 0, false
 	}
-	return fmt.Sprintf("%.0f %s", v, m.Unit)
+	return float64(n) * 100 / float64(d), true
 }
-
-// relBases 只能和别人 / 自己的历史比的指标
-func relBases() []string { return []string{"peer", "site", "self"} }
-
-// absBases 出错类指标：都比不了时按绝对值判（固定值 0，即「比 0 高几个百分点」）
-func absBases() []string { return []string{"peer", "site", "self", "fixed"} }
 
 var metrics = []Metric{
-	{Key: "err", Name: "报错率", Unit: "%", Better: "low", Dec: 1,
-		Desc: "上游返回 5xx、超时、连接中断的请求占比。用户自己造成的错误（余额不足、参数错）和 429 不算。",
-		Rule: TrafficRule{Bases: absBases(), Fixed: fptr(0), MinPeers: 1, MinSamples: 50, Duration: 60, Mode: "diff", Warn: 2, Bad: 5, Floor: fptr(1), MinEvents: 3}, Counted: true,
-		count: func(a Agg) int64 { return a.Errors },
-		value: func(a Agg) (float64, bool) {
-			if a.Total() == 0 {
-				return 0, false
-			}
-			return float64(a.Errors) * 100 / float64(a.Total()), true
-		}},
-	{Key: "r429", Name: "限流率", Unit: "%", Better: "low", Dec: 1,
-		Desc: "上游返回 429 的请求占比，说明号池容量紧张。",
-		Rule: TrafficRule{Bases: absBases(), Fixed: fptr(0), MinPeers: 1, MinSamples: 50, Duration: 60, Mode: "diff", Warn: 5, Bad: 12, Floor: fptr(2), MinEvents: 3}, Counted: true,
-		count: func(a Agg) int64 { return a.Limited },
-		value: func(a Agg) (float64, bool) {
-			if a.Total() == 0 {
-				return 0, false
-			}
-			return float64(a.Limited) * 100 / float64(a.Total()), true
-		}},
-	{Key: "ttft", Name: "首字耗时 p90", Unit: "s", Better: "low", Dec: 1,
-		Desc: "流式请求从发出到收到第一个字的时间，取最慢的 10%（p90），比平均值更能反映卡顿。",
-		Rule: TrafficRule{Bases: relBases(), MinPeers: 1, MinSamples: 50, Duration: 60, Mode: "ratio", Warn: 1.5, Bad: 2, Floor: fptr(3)},
-		value: func(a Agg) (float64, bool) {
-			if a.TTFTN == 0 {
-				return 0, false
-			}
-			return a.TTFTP90 / 1000, true
-		}},
-	{Key: "tps", Name: "输出速度", Unit: "tok/s", Better: "high", Dec: 0,
-		Desc: "开始输出以后每秒输出多少 token（输出 token ÷ 输出用时）。",
-		Rule: TrafficRule{Bases: relBases(), MinPeers: 1, MinSamples: 50, Duration: 60, Mode: "pct", Warn: 70, Bad: 50},
-		value: func(a Agg) (float64, bool) {
-			if a.GenMs <= 0 || a.OutTokens <= 0 {
-				return 0, false
-			}
-			return float64(a.OutTokens) / (float64(a.GenMs) / 1000), true
-		}},
-	{Key: "cache", Name: "缓存命中率", Unit: "%", Better: "high", Dec: 0,
-		Desc: "输入里命中缓存的比例（缓存读取 ÷ 全部输入）。反映上游号池能不能把同一会话留在同一个底层账号上。",
-		Rule: TrafficRule{Bases: relBases(), MinPeers: 1, MinSamples: 50, Duration: 60, Mode: "diff", Warn: 15, Bad: 30},
-		value: func(a Agg) (float64, bool) {
-			if a.CacheTotal <= 0 {
-				return 0, false
-			}
-			return float64(a.CacheRead) * 100 / float64(a.CacheTotal), true
-		}},
-}
-
-func metricByKey(k string) (Metric, bool) {
-	for _, m := range metrics {
-		if m.Key == k {
-			return m, true
+	{Key: "err", Name: "报错率", Unit: "%", Better: "low", Abs: 1, value: func(a Agg) (float64, bool) { return pctOf(a.Errors, a.Total()) }},
+	{Key: "r429", Name: "限流率", Unit: "%", Better: "low", Abs: 1, value: func(a Agg) (float64, bool) { return pctOf(a.Limited, a.Total()) }},
+	{Key: "ttft", Name: "首字耗时", Unit: "s", Better: "low", Rel: 0.2, value: func(a Agg) (float64, bool) {
+		if a.P50N == 0 {
+			return 0, false
 		}
-	}
-	return Metric{}, false
+		return a.TTFTP50 / 1000, true
+	}},
+	{Key: "tps", Name: "输出速度", Unit: "tok/s", Better: "high", Rel: 0.15, value: func(a Agg) (float64, bool) {
+		if a.GenMs <= 0 || a.OutTokens <= 0 {
+			return 0, false
+		}
+		return float64(a.OutTokens) / (float64(a.GenMs) / 1000), true
+	}},
+	{Key: "cache", Name: "缓存命中率", Unit: "%", Better: "high", Abs: 10, value: func(a Agg) (float64, bool) { return pctOf(a.CacheRead, a.CacheTotal) }},
 }
 
 // ---------- 汇总任务：从 usage_logs / ops_error_logs 汇总，写 plus_dispatch_traffic_hourly ----------
@@ -255,8 +194,9 @@ WITH s AS (
          COUNT(*) AS n,
          percentile_cont(0.9) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE stream AND first_token_ms IS NOT NULL) AS p90,
          COUNT(*) FILTER (WHERE stream AND first_token_ms IS NOT NULL) AS tn,
-         COALESCE(SUM(output_tokens) FILTER (WHERE output_tokens > 0 AND duration_ms > COALESCE(first_token_ms, 0)), 0) AS ot,
-         COALESCE(SUM(duration_ms - COALESCE(first_token_ms, 0)) FILTER (WHERE output_tokens > 0 AND duration_ms > COALESCE(first_token_ms, 0)), 0) AS gm,
+         percentile_cont(0.5) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE stream AND first_token_ms IS NOT NULL) AS p50,
+         COALESCE(SUM(output_tokens) FILTER (WHERE stream AND output_tokens >= 50 AND duration_ms > COALESCE(first_token_ms, 0)), 0) AS ot,
+         COALESCE(SUM(duration_ms - COALESCE(first_token_ms, 0)) FILTER (WHERE stream AND output_tokens >= 50 AND duration_ms > COALESCE(first_token_ms, 0)), 0) AS gm,
          COALESCE(SUM(cache_read_tokens), 0) AS cr,
          COALESCE(SUM(input_tokens + cache_read_tokens + cache_creation_tokens), 0) AS ct
   FROM usage_logs
@@ -275,7 +215,7 @@ WITH s AS (
 )
 SELECT COALESCE(s.b, e.b), COALESCE(s.group_id, e.group_id), COALESCE(s.account_id, e.account_id), COALESCE(s.model, e.model),
        COALESCE(s.n, 0), COALESCE(e.err, 0), COALESCE(e.lim, 0), COALESCE(s.p90, 0), COALESCE(s.tn, 0),
-       COALESCE(s.ot, 0), COALESCE(s.gm, 0), COALESCE(s.cr, 0), COALESCE(s.ct, 0)
+       COALESCE(s.p50, 0), COALESCE(s.ot, 0), COALESCE(s.gm, 0), COALESCE(s.cr, 0), COALESCE(s.ct, 0)
 FROM s FULL JOIN e ON s.b = e.b AND s.group_id = e.group_id AND s.account_id = e.account_id AND s.model = e.model`
 
 func (t SQLTraffic) Aggregate(ctx context.Context, from, to time.Time, hourly bool) (map[TKey]map[int64]Agg, error) {
@@ -296,9 +236,10 @@ func (t SQLTraffic) Aggregate(ctx context.Context, from, to time.Time, hourly bo
 			a Agg
 		)
 		if err := rows.Scan(&b, &k.Group, &k.Account, &k.Model, &a.Requests, &a.Errors, &a.Limited, &a.TTFTP90, &a.TTFTN,
-			&a.OutTokens, &a.GenMs, &a.CacheRead, &a.CacheTotal); err != nil {
+			&a.TTFTP50, &a.OutTokens, &a.GenMs, &a.CacheRead, &a.CacheTotal); err != nil {
 			return nil, err
 		}
+		a.P50N = a.TTFTN
 		m := out[k]
 		if m == nil {
 			m = map[int64]Agg{}
@@ -319,23 +260,28 @@ func (t SQLTraffic) SaveHourly(ctx context.Context, from, to time.Time, data map
 		return err
 	}
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO plus_dispatch_traffic_hourly
-		(bucket, group_id, account_id, model, requests, errors, limited, ttft_p90, ttft_n, out_tokens, gen_ms, cache_read, cache_total)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		(bucket, group_id, account_id, model, requests, errors, limited, ttft_p90, ttft_n, out_tokens, gen_ms, cache_read, cache_total,
+		 ttft_p50, p50_n)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		ON CONFLICT (bucket, group_id, account_id, model) DO UPDATE SET requests = EXCLUDED.requests, errors = EXCLUDED.errors,
 		  limited = EXCLUDED.limited, ttft_p90 = EXCLUDED.ttft_p90, ttft_n = EXCLUDED.ttft_n, out_tokens = EXCLUDED.out_tokens,
-		  gen_ms = EXCLUDED.gen_ms, cache_read = EXCLUDED.cache_read, cache_total = EXCLUDED.cache_total`)
+		  gen_ms = EXCLUDED.gen_ms, cache_read = EXCLUDED.cache_read, cache_total = EXCLUDED.cache_total,
+		  ttft_p50 = EXCLUDED.ttft_p50, p50_n = EXCLUDED.p50_n`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	for k, m := range data {
 		for b, a := range m {
-			var p90 any
+			var p90, p50 any
 			if a.TTFTN > 0 {
 				p90 = a.TTFTP90
 			}
+			if a.P50N > 0 {
+				p50 = a.TTFTP50
+			}
 			if _, err := stmt.ExecContext(ctx, time.Unix(b, 0), k.Group, k.Account, k.Model, a.Requests, a.Errors, a.Limited,
-				p90, a.TTFTN, a.OutTokens, a.GenMs, a.CacheRead, a.CacheTotal); err != nil {
+				p90, a.TTFTN, a.OutTokens, a.GenMs, a.CacheRead, a.CacheTotal, p50, a.P50N); err != nil {
 				return err
 			}
 		}
@@ -345,7 +291,7 @@ func (t SQLTraffic) SaveHourly(ctx context.Context, from, to time.Time, data map
 
 func (t SQLTraffic) LoadHourly(ctx context.Context, from time.Time, groupID int64) (map[TKey]map[int64]Agg, error) {
 	q := `SELECT bucket, group_id, account_id, model, requests, errors, limited, COALESCE(ttft_p90, 0), ttft_n,
-	             out_tokens, gen_ms, cache_read, cache_total
+	             out_tokens, gen_ms, cache_read, cache_total, COALESCE(ttft_p50, 0), p50_n
 	      FROM plus_dispatch_traffic_hourly WHERE bucket >= $1`
 	args := []any{from}
 	if groupID > 0 {
@@ -365,7 +311,7 @@ func (t SQLTraffic) LoadHourly(ctx context.Context, from time.Time, groupID int6
 			a Agg
 		)
 		if err := rows.Scan(&b, &k.Group, &k.Account, &k.Model, &a.Requests, &a.Errors, &a.Limited, &a.TTFTP90, &a.TTFTN,
-			&a.OutTokens, &a.GenMs, &a.CacheRead, &a.CacheTotal); err != nil {
+			&a.OutTokens, &a.GenMs, &a.CacheRead, &a.CacheTotal, &a.TTFTP50, &a.P50N); err != nil {
 			return nil, err
 		}
 		m := out[k]
@@ -390,15 +336,16 @@ type TrafficLoader struct {
 }
 
 const (
-	trafficHistory   = 8 * 24 * time.Hour
+	trafficBackfill  = 8 * 24 * time.Hour  // 启动时按当前口径重算多久
+	trafficWindow    = 31 * 24 * time.Hour // 页面最多看多久（按天的状态条 30 天）
 	trafficRetention = 35 * 24 * time.Hour
 )
 
-// Refresh 重算最近两个小时的小时桶；第一次运行时回填 8 天
+// Refresh 重算最近两个小时的小时桶（含当前小时）；第一次运行时回填 8 天
 func (l *TrafficLoader) Refresh(ctx context.Context, now time.Time) error {
 	from := now.Truncate(time.Hour).Add(-time.Hour)
 	if !l.backfill {
-		from = now.Truncate(time.Hour).Add(-trafficHistory)
+		from = now.Truncate(time.Hour).Add(-trafficBackfill)
 	}
 	to := now.Truncate(time.Hour).Add(time.Hour)
 	// 回填按天分段，避免一次扫太多
@@ -424,41 +371,19 @@ func (l *TrafficLoader) Refresh(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-// Load 读最近 8 天的小时桶 + 最近 60 分钟滚动值
+// Load 读最近一个月的小时桶
 func (l *TrafficLoader) Load(ctx context.Context, now time.Time) (*TrafficSet, error) {
-	ts := newTrafficSet(now)
-	h, err := l.Store.LoadHourly(ctx, now.Truncate(time.Hour).Add(-trafficHistory), 0)
+	h, err := l.Store.LoadHourly(ctx, now.Truncate(time.Hour).Add(-trafficWindow), 0)
 	if err != nil {
 		return nil, err
 	}
-	ts.Hourly = h
-	cur, err := l.Store.Aggregate(ctx, now.Add(-time.Hour), now, false)
-	if err != nil {
-		return nil, err
-	}
-	for k, m := range cur {
-		var a Agg
-		for _, v := range m {
-			a = a.Add(v)
+	rows := make([]TRow, 0, 4096)
+	for k, m := range h {
+		for b, a := range m {
+			rows = append(rows, TRow{Bucket: b, TKey: k, Agg: a})
 		}
-		ts.Now[k] = a
 	}
-	return ts, nil
-}
-
-func median(vs []float64) (float64, bool) {
-	if len(vs) == 0 {
-		return 0, false
-	}
-	s := append([]float64(nil), vs...)
-	sort.Float64s(s)
-	m := len(s) / 2
-	if len(s)%2 == 1 {
-		return s[m], true
-	}
-	return (s[m-1] + s[m]) / 2, true
+	return NewTrafficSet(now, rows), nil
 }
 
 func round1(v float64) float64 { return math.Round(v*10) / 10 }
-
-const timeHour = time.Hour

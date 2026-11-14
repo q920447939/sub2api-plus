@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 )
 
@@ -26,8 +28,26 @@ type CatAccount struct {
 	Rate        float64   `json:"rate_multiplier"`
 	CreatedAt   time.Time `json:"created_at"`
 	Groups      []int64   `json:"group_ids"`
+	Priority    int       `json:"priority"`
 	Direct      bool      `json:"direct"`     // 能否账号直连（API Key 类账号）
 	DirectWhy   string    `json:"direct_why"` // 不能直连的原因
+	Models      []string  `json:"models"`     // 模型映射里写了的模型（空 = 没配映射）
+	creds       map[string]any
+	extra       map[string]any
+	memo        *sync.Map // model → bool（目录快照会被多个请求共用，所以用并发安全的缓存）
+}
+
+// Supports 账号支不支持这个模型（和网关选号同一个判断）
+func (a *CatAccount) Supports(model string) bool {
+	if a.memo == nil {
+		return service.PlusAccountSupportsModel(a.Platform, a.Type, a.creds, a.extra, model)
+	}
+	if v, ok := a.memo.Load(model); ok {
+		return v.(bool)
+	}
+	v := service.PlusAccountSupportsModel(a.Platform, a.Type, a.creds, a.extra, model)
+	a.memo.Store(model, v)
+	return v
 }
 
 // Serving 是否参与调度（启用且调度已开启）
@@ -123,7 +143,10 @@ func (s SQLCatalog) LoadCatalog(ctx context.Context) (*Catalog, error) {
 		SELECT a.id, a.name, a.platform, a.type, a.status, a.schedulable,
 		       COALESCE(a.credentials->>'base_url', ''), COALESCE(a.credentials->>'api_key', ''),
 		       COALESCE(a.rate_multiplier, 1), a.created_at,
-		       COALESCE(ARRAY(SELECT ag.group_id FROM account_groups ag WHERE ag.account_id = a.id ORDER BY ag.group_id), '{}')
+		       COALESCE(ARRAY(SELECT ag.group_id FROM account_groups ag WHERE ag.account_id = a.id ORDER BY ag.group_id), '{}'),
+		       a.priority,
+		       COALESCE(a.credentials, '{}'::jsonb) - ARRAY['api_key', 'access_token', 'refresh_token', 'id_token', 'session_key', 'cookie'],
+		       COALESCE(a.extra, '{}'::jsonb)
 		FROM accounts a WHERE a.deleted_at IS NULL ORDER BY a.id`)
 	if err != nil {
 		return nil, err
@@ -131,12 +154,23 @@ func (s SQLCatalog) LoadCatalog(ctx context.Context) (*Catalog, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var (
-			a      CatAccount
-			key    string
-			groups pq.Int64Array
+			a           CatAccount
+			key         string
+			groups      pq.Int64Array
+			creds, extr []byte
 		)
-		if err := rows.Scan(&a.ID, &a.Name, &a.Platform, &a.Type, &a.Status, &a.Schedulable, &a.BaseURL, &key, &a.Rate, &a.CreatedAt, &groups); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Platform, &a.Type, &a.Status, &a.Schedulable, &a.BaseURL, &key, &a.Rate, &a.CreatedAt, &groups,
+			&a.Priority, &creds, &extr); err != nil {
 			return nil, err
+		}
+		a.memo = &sync.Map{}
+		_ = json.Unmarshal(creds, &a.creds)
+		_ = json.Unmarshal(extr, &a.extra)
+		if mm, ok := a.creds["model_mapping"].(map[string]any); ok {
+			for k := range mm {
+				a.Models = append(a.Models, k)
+			}
+			sort.Strings(a.Models)
 		}
 		a.Groups = []int64(groups)
 		a.CredKey = credKey(a.ID, a.Type, a.BaseURL, key)

@@ -1,16 +1,18 @@
-// Package dispatch — [plus] 上游调度台。
+// Package dispatch — [plus] 上游调度台 v2。
 //
-// 分层（与需求文档的七层抽象一一对应）：
+// 两个对象：
 //
-//	维度 Dimension      要回答的问题（模型身份、智力、稳定…），带「作用」：门槛 / 参与调度 / 仅展示
-//	检测方式 Detector  检测的办法（代码插件，见 detector_*.go），自己声明能力：要不要计划、结果有哪些、怎么判
-//	检测项 Item          某个类型的一个实例（糖果题 = 判分题 + 题面 + 答案），判定规则也在这里
-//	检测计划 Plan        主动检测项 × 一个平台 × 若干模型 × 账号范围 × 频率
-//	检测记录 Run         每一次账号直连的检测
-//	判定 Verdict         （分组 × 账号 × 模型 × 检测项）的当前结论，维度结论 = 下面最差的检测项
-//	使用方               待处理（events）、调度建议（simulator）、调度调整（adjust + hook）
+//	体检对象 = 账号 × 模型：流量跨分组合并，健康分和渠道状态同一套算法；主动检测（指纹 / 判分题 / 存档题）也按账号 × 模型
+//	分流对象 = 分组 × 模型（线路）：候选是这个分组里支持这个模型的账号；权重设置挂在 账号 × 分组 ×（模型）上
 //
-// 页面、表格列、计划表单都由注册表和配置生成，代码里不出现具体题目名或指标名。
+// 分层：
+//
+//	检测方式 Detector  代码插件（detector_*.go），自己声明能力和判定办法
+//	检测项 Item          某个检测方式的一个实例（糖果题 = 判分题 + 题面 + 答案），判定规则也在这里
+//	检测计划 Plan        检测项 × 一个平台 × 若干模型 × 指定账号（空 = 全部）× 每 N 分钟
+//	检测记录 Run         每一次账号直连的检测；结论（Verdict）按检测项规则从最近的记录现算
+//	权重 Rule            账号在某条线路上承接多少；钩子（hook）按它改写候选名单
+//	调整记录 Record      每一次保存权重，效果对比挂在这上面
 package dispatch
 
 import (
@@ -26,120 +28,46 @@ var (
 	ErrConflict        = errors.New("冲突")
 )
 
-// Level 结论等级
+// Level 主动检测的结论
 type Level string
 
 const (
-	LevelOK   Level = "ok"   // 正常
-	LevelWarn Level = "warn" // 可疑
-	LevelBad  Level = "bad"  // 异常
-	LevelFew  Level = "few"  // 数据不足
-	LevelNone Level = "none" // 未检测
-	LevelInfo Level = "info" // 只展示，不判定
+	LevelOK    Level = "ok"    // 通过
+	LevelBad   Level = "bad"   // 未通过
+	LevelFew   Level = "few"   // 有效结果还不够
+	LevelFault Level = "fault" // 检测请求连续出错（测不了，不是账号没通过）
+	LevelInfo  Level = "info"  // 只存档，不判对错
 )
-
-// Rank 越大越严重；用于「取最差」
-func (l Level) Rank() float64 {
-	switch l {
-	case LevelBad:
-		return 4
-	case LevelWarn:
-		return 3
-	case LevelOK:
-		return 2
-	case LevelFew:
-		return 1
-	case LevelInfo:
-		return 0.5
-	}
-	return 0
-}
-
-// Problem 是否需要关注（可疑或异常）
-func (l Level) Problem() bool { return l == LevelWarn || l == LevelBad }
-
-// Role 维度的作用
-type Role string
-
-const (
-	RoleGate    Role = "gate"    // 门槛：异常时按维度上的设置减少或停止分配
-	RoleScore   Role = "score"   // 参与调度：有问题时按调度策略的系数减少份额
-	RoleDisplay Role = "display" // 仅展示
-)
-
-func (r Role) valid() bool { return r == RoleGate || r == RoleScore || r == RoleDisplay }
-
-// Gate 门槛维度判为异常后的处理
-type Gate struct {
-	Before    string  `json:"before"`     // 还没确认：cut（先降到 x%）| none（只提醒）| stop（直接停止分配）
-	BeforePct float64 `json:"before_pct"` //
-	After     string  `json:"after"`      // 管理员确认后：stop | cut
-	AfterPct  float64 `json:"after_pct"`
-}
-
-func defaultGate() Gate { return Gate{Before: "cut", BeforePct: 3, After: "stop"} }
-
-func (g *Gate) normalize() {
-	if g.Before != "cut" && g.Before != "none" && g.Before != "stop" {
-		g.Before = "cut"
-	}
-	if g.After != "stop" && g.After != "cut" {
-		g.After = "stop"
-	}
-	g.BeforePct = clampF(g.BeforePct, 0, 100)
-	g.AfterPct = clampF(g.AfterPct, 0, 100)
-}
-
-// Dimension 维度
-type Dimension struct {
-	ID      int64     `json:"id"`
-	Name    string    `json:"name"`
-	Role    Role      `json:"role"`
-	Gate    Gate      `json:"gate"`
-	Sort    int       `json:"sort"`
-	Enabled bool      `json:"enabled"`
-	Updated time.Time `json:"updated_at"`
-}
 
 // Item 检测项
 type Item struct {
-	ID          int64           `json:"id"`
-	Name        string          `json:"name"`
-	Type        string          `json:"type"`
-	DimensionID int64           `json:"dimension_id"`
-	DisplayOnly bool            `json:"display_only"`
-	Params      json.RawMessage `json:"params"`
-	Rule        json.RawMessage `json:"rule"`
-	Platforms   []string        `json:"platforms"`
-	Enabled     bool            `json:"enabled"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	ID        int64           `json:"id"`
+	Name      string          `json:"name"`
+	Type      string          `json:"type"`
+	Params    json.RawMessage `json:"params"`
+	Rule      json.RawMessage `json:"rule"`
+	Enabled   bool            `json:"enabled"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
-// Judged 这个检测项是否参与维度判定
-func (it Item) Judged(spec TypeSpec) bool { return spec.Judges && !it.DisplayOnly }
-
-// Plan 检测计划（只有主动检测项才有）
+// Plan 检测计划
 type Plan struct {
-	ID              int64       `json:"id"`
-	ItemID          int64       `json:"item_id"`
-	Platform        string      `json:"platform"`
-	Models          []string    `json:"models"`
-	Scopes          []PlanScope `json:"scopes"`      // 测哪些账号：多条规则，命中任意一条就测
-	ExcludeIDs      []int64     `json:"exclude_ids"` // 不测这些账号（优先于上面的规则）
-	IntervalMinutes int         `json:"interval_minutes"`
-	TimeoutSeconds  int         `json:"timeout_seconds"`
-	Enabled         bool        `json:"enabled"`
-	NextRunAt       time.Time   `json:"next_run_at"`
-	CreatedAt       time.Time   `json:"created_at"`
-	UpdatedAt       time.Time   `json:"updated_at"`
+	ID              int64     `json:"id"`
+	ItemID          int64     `json:"item_id"`
+	Platform        string    `json:"platform"`
+	Models          []string  `json:"models"`
+	AccountIDs      []int64   `json:"account_ids"` // 空 = 调度开着、自己提供这个模型的全部账号
+	IntervalMinutes int       `json:"interval_minutes"`
+	TimeoutSeconds  int       `json:"timeout_seconds"`
+	Enabled         bool      `json:"enabled"`
+	NextRunAt       time.Time `json:"next_run_at"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
-
-// defaultNewDays 没有计划选「新接入的账号」时，账号创建后几天内算「新接入」
-const defaultNewDays = 3
 
 const (
-	minIntervalMinutes = 10
+	minIntervalMinutes = 1
 	maxIntervalMinutes = 7 * 24 * 60
 )
 
@@ -158,7 +86,7 @@ type Run struct {
 	PlanID       *int64         `json:"plan_id"`
 	ItemID       int64          `json:"item_id"`
 	AccountID    int64          `json:"account_id"`
-	CredKey      string         `json:"cred_key"`
+	CredKey      string         `json:"-"`
 	Platform     string         `json:"platform"`
 	Model        string         `json:"model"`
 	Trigger      string         `json:"trigger"`
@@ -178,69 +106,15 @@ type Run struct {
 	FinishedAt   *time.Time     `json:"finished_at"`
 }
 
-// Subject 被判定的对象：分组里的某个账号的某个模型
-type Subject struct {
-	GroupID   int64
-	AccountID int64
-	Model     string
-	Platform  string
-	CredKey   string
-}
-
-// Verdict 一个检测项对一个对象的结论
+// Verdict 一个检测项对「账号 × 模型」的当前结论
 type Verdict struct {
-	Level    Level          `json:"level"`
-	Short    string         `json:"short"`
-	Long     string         `json:"long"`
-	Value    *float64       `json:"value,omitempty"`
-	Ref      *float64       `json:"ref,omitempty"`
-	Evidence map[string]any `json:"evidence,omitempty"`
+	Level   Level  `json:"level"`
+	Short   string `json:"short"`
+	Long    string `json:"long"`
+	Valid   int    `json:"valid"`             // 参与判定的有效结果次数
+	Bad     int    `json:"bad"`               // 其中没通过的次数
+	Ignored bool   `json:"ignored,omitempty"` // 有被标为误报的结果
 }
-
-// StoredVerdict 落库的判定
-type StoredVerdict struct {
-	GroupID   int64          `json:"group_id"`
-	AccountID int64          `json:"account_id"`
-	Model     string         `json:"model"`
-	ItemID    int64          `json:"item_id"`
-	Level     Level          `json:"level"`
-	Short     string         `json:"short"`
-	Long      string         `json:"long"`
-	Value     *float64       `json:"value,omitempty"`
-	Ref       *float64       `json:"ref,omitempty"`
-	Evidence  map[string]any `json:"evidence,omitempty"`
-	Since     time.Time      `json:"since"`
-	UpdatedAt time.Time      `json:"updated_at"`
-}
-
-// Event 待处理
-type Event struct {
-	ID          int64      `json:"id"`
-	Kind        string     `json:"kind"` // dim | fault | gap
-	DedupKey    string     `json:"-"`
-	GroupID     int64      `json:"group_id"`
-	AccountID   int64      `json:"account_id"`
-	Model       string     `json:"model"`
-	DimensionID int64      `json:"dimension_id"`
-	ItemID      int64      `json:"item_id"`
-	Level       Level      `json:"level"`
-	State       string     `json:"state"` // todo | confirmed | false | ignored | resolved
-	Title       string     `json:"title"`
-	Evidence    []string   `json:"evidence"`
-	FirstAt     time.Time  `json:"first_at"`
-	LastAt      time.Time  `json:"last_at"`
-	ResolvedAt  *time.Time `json:"resolved_at,omitempty"`
-	HandledBy   *int64     `json:"handled_by,omitempty"`
-	HandledAt   *time.Time `json:"handled_at,omitempty"`
-}
-
-const (
-	EventTodo      = "todo"
-	EventConfirmed = "confirmed"
-	EventFalse     = "false"
-	EventIgnored   = "ignored"
-	EventResolved  = "resolved"
-)
 
 // Actor 操作人
 type Actor struct {

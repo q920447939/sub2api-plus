@@ -163,34 +163,19 @@ func (p *GradedParams) normalize() error {
 	return nil
 }
 
-// GradedRule 判分题的判定规则
+// GradedRule 判分题的判定规则：最近 window 次有效回答里答对少于 bad_below 次 → 未通过（没攒满时按比例折算）
 type GradedRule struct {
-	Window    int    `json:"window"`     // 看最近几次
-	How       string `json:"how"`        // fixed（固定次数）| peer（和同组同模型其他账号比）
-	WarnBelow int    `json:"warn_below"` // 答对少于几次记可疑
-	BadBelow  int    `json:"bad_below"`
-	PeerWarn  int    `json:"peer_warn"` // 比同组平均少几次记可疑
-	PeerBad   int    `json:"peer_bad"`
+	WindowRule
+	BadBelow int `json:"bad_below"`
 }
 
 func (r *GradedRule) normalize() error {
-	if r.Window <= 0 {
-		r.Window = 10
+	r.WindowRule.normalize(5)
+	if r.BadBelow <= 0 {
+		r.BadBelow = 3
 	}
-	if r.Window > 50 {
-		r.Window = 50
-	}
-	if r.How != "peer" {
-		r.How = "fixed"
-	}
-	if r.WarnBelow == 0 && r.BadBelow == 0 {
-		r.WarnBelow, r.BadBelow = 6, 3
-	}
-	if r.PeerWarn == 0 && r.PeerBad == 0 {
-		r.PeerWarn, r.PeerBad = 3, 5
-	}
-	if r.BadBelow > r.WarnBelow || r.PeerBad < r.PeerWarn {
-		return fmt.Errorf("%w：「异常」的阈值要比「可疑」更严", ErrInvalid)
+	if r.BadBelow > r.Window {
+		return fmt.Errorf("%w：答对次数的下限不能超过看的次数", ErrInvalid)
 	}
 	return nil
 }
@@ -198,18 +183,18 @@ func (r *GradedRule) normalize() error {
 // GradedDetector 判分题：发一道有标准答案的题，从回答里提取答案并自动判对错
 type GradedDetector struct{ LLM Completer }
 
-var _ ActiveDetector = GradedDetector{}
+var _ Detector = GradedDetector{}
 
 func (GradedDetector) Spec() TypeSpec {
 	return TypeSpec{
-		Key: "graded", Name: "判分题", Active: true, Judges: true, Comparable: true,
+		Key: "graded", Name: "判分题", Judges: true, HasPrompt: true, HasAnswers: true, DefaultEvery: 60,
 		Description: "发一道有标准答案的题，从回答里提取答案并自动判对错。",
-		Supports:    "所有平台",
-		JudgeDesc:   "近 N 次答对次数（固定次数，或和同组同模型其他账号比）",
-		PlanFields:  []string{"models", "pick", "every", "timeout"},
+		RuleText:    "最近 {window} 次有效回答里答对少于 {bad_below} 次算未通过，满 {min_valid} 次才下结论",
+		RuleFields:  []RuleField{{Key: "window", Min: 1, Max: 50}, {Key: "bad_below", Min: 1, Max: 50}, {Key: "min_valid", Min: 1, Max: 50}},
 		Outcomes: []OutcomeSpec{
 			{Key: OutcomePass, Label: "答对", Tone: "ok"},
 			{Key: OutcomeFail, Label: "答错", Tone: "bad"},
+			{Key: OutcomeIgnored, Label: "已标误报", Tone: "few"},
 			{Key: OutcomeError, Label: "请求出错", Tone: "err"},
 		},
 	}
@@ -283,103 +268,31 @@ func TryGrade(params GradedParams, reply string) (string, bool, error) {
 	return got, ok, nil
 }
 
-type gradedCount struct {
-	n, pass int
-}
-
-func countGraded(rs []Run, window int) gradedCount {
-	var c gradedCount
-	for _, r := range rs {
-		if r.Outcome != OutcomePass && r.Outcome != OutcomeFail {
-			continue
-		}
-		c.n++
-		if r.Outcome == OutcomePass {
-			c.pass++
-		}
-		if c.n >= window {
-			break
-		}
-	}
-	return c
-}
-
-func (GradedDetector) Judge(env *JudgeEnv, item Item, s Subject) Verdict {
+func (GradedDetector) Judge(item Item, rs []Run) *Verdict {
 	var r GradedRule
 	_ = json.Unmarshal(item.Rule, &r)
 	_ = r.normalize()
-	rs := env.RunsOf(item.ID, s.CredKey, s.Model)
-	if len(rs) == 0 {
-		return Verdict{Level: LevelNone, Short: "还没执行", Long: "计划已覆盖，还没执行过"}
+	valid, ignored := validRuns(rs, r.Window)
+	if len(valid) < r.MinValid {
+		v := fewVerdict(len(valid), r.MinValid)
+		v.Ignored = ignored > 0
+		return v
 	}
-	me := countGraded(rs, r.Window)
-	need := (r.Window + 1) / 2
-	ev := map[string]any{"window": r.Window, "n": me.n, "pass": me.pass, "errors": leadingErrors(rs)}
-	if me.n < need {
-		return Verdict{Level: LevelFew, Short: fmt.Sprintf("%d 次有效", me.n), Evidence: ev,
-			Long: fmt.Sprintf("有效回答 %d 次，满 %d 次后判定%s", me.n, need, staleNote(rs))}
-	}
-	// 同组同模型其他账号（按凭证去重）
-	type peer struct {
-		AccountID int64   `json:"account_id"`
-		N         int     `json:"n"`
-		Pass      int     `json:"pass"`
-		Scaled    float64 `json:"-"`
-	}
-	var peers []peer
-	seen := map[string]bool{s.CredKey: true}
-	if g := env.Catalog.Groups[s.GroupID]; g != nil {
-		for _, id := range g.Accounts {
-			a := env.Catalog.Accounts[id]
-			if a == nil || seen[a.CredKey] {
-				continue
-			}
-			seen[a.CredKey] = true
-			c := countGraded(env.RunsOf(item.ID, a.CredKey, s.Model), r.Window)
-			if c.n >= need {
-				peers = append(peers, peer{AccountID: id, N: c.n, Pass: c.pass, Scaled: float64(c.pass) / float64(c.n) * float64(me.n)})
-			}
+	ok := 0
+	for _, x := range valid {
+		if x.Outcome == OutcomePass {
+			ok++
 		}
 	}
-	var avg *float64
-	if len(peers) > 0 {
-		sum := 0.0
-		for _, p := range peers {
-			sum += p.Scaled
-		}
-		avg = fptr(sum / float64(len(peers)))
-	}
-	ev["peers"] = peers
-	var lv Level
-	var basis string
-	// 阈值是按「近 Window 次」定的；有效回答还没攒满窗口时按比例换算，
-	// 否则攒满前最多只能答对 n 次，永远够不到线（例如 5 次全对也会低于「10 次里少于 6 次」）
-	scale := float64(me.n) / float64(r.Window)
-	full := me.n >= r.Window
-	line := func(v int) float64 { return float64(v) * scale }
-	if r.How == "peer" && avg != nil {
-		d := *avg - float64(me.pass)
-		lv = pick(d >= line(r.PeerBad), d >= line(r.PeerWarn))
-		if full {
-			basis = fmt.Sprintf("比同组平均少 %.1f 次；少 %d 次记可疑，少 %d 次记异常", math.Max(0, d), r.PeerWarn, r.PeerBad)
-		} else {
-			basis = fmt.Sprintf("比同组平均少 %.1f 次；按 %d 次换算，少 %.1f 次记可疑，少 %.1f 次记异常", math.Max(0, d), me.n, line(r.PeerWarn), line(r.PeerBad))
-		}
+	n := len(valid)
+	v := &Verdict{Valid: n, Bad: n - ok, Ignored: ignored > 0}
+	// 阈值按「最近 window 次」定；还没攒满时按比例折算，否则攒满前永远够不到线
+	if float64(ok) < float64(r.BadBelow)*float64(n)/float64(r.Window) {
+		v.Level, v.Short, v.Long = LevelBad, fmt.Sprintf("%d 次只答对 %d 次", n, ok), fmt.Sprintf("最近 %d 次有效回答里只答对 %d 次", n, ok)
 	} else {
-		lv = pick(float64(me.pass) < line(r.BadBelow), float64(me.pass) < line(r.WarnBelow))
-		if full {
-			basis = fmt.Sprintf("少于 %d 次记可疑，少于 %d 次记异常", r.WarnBelow, r.BadBelow)
-		} else {
-			basis = fmt.Sprintf("规则是近 %d 次里少于 %d 次记可疑、少于 %d 次记异常，按 %d 次换算是少于 %.1f / %.1f 次", r.Window, r.WarnBelow, r.BadBelow, me.n, line(r.WarnBelow), line(r.BadBelow))
-		}
+		v.Level, v.Short, v.Long = LevelOK, fmt.Sprintf("%d 次答对 %d 次", n, ok), fmt.Sprintf("最近 %d 次有效回答里答对 %d 次", n, ok)
 	}
-	long := fmt.Sprintf("近 %d 次答对 %d 次", me.n, me.pass)
-	if avg != nil {
-		long += fmt.Sprintf("，同组同模型其他账号平均 %.1f 次", *avg)
-	}
-	long += "（" + basis + "）" + staleNote(rs)
-	return Verdict{Level: lv, Value: fptr(float64(me.pass) / float64(me.n) * 100), Ref: avg,
-		Short: fmt.Sprintf("%d/%d 答对", me.pass, me.n), Long: long, Evidence: ev}
+	return v
 }
 
 func truncateRunes(s string, n int) string {

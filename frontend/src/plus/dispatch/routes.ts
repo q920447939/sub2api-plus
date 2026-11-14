@@ -11,13 +11,11 @@ const admin = (path: string, name: string, title: string, component: () => Promi
 } as RouteRecordRaw)
 
 export const plusDispatchRoutes: RouteRecordRaw[] = [
-  { path: DISPATCH_BASE, redirect: `${DISPATCH_BASE}/overview` },
-  admin('overview', 'PlusDispatchOverview', '账号健康总览', () => import('./views/OverviewView.vue')),
-  admin('account/:id', 'PlusDispatchAccount', '账号诊断详情', () => import('./views/AccountView.vue')),
-  admin('compare', 'PlusDispatchCompare', '指标横向对比', () => import('./views/CompareView.vue')),
+  { path: DISPATCH_BASE, redirect: `${DISPATCH_BASE}/board` },
+  admin('board', 'PlusDispatchBoard', '上游账号', () => import('./views/BoardView.vue')),
+  admin('account/:id', 'PlusDispatchAccount', '账号详情', () => import('./views/AccountView.vue')),
+  admin('changes', 'PlusDispatchChanges', '调整记录', () => import('./views/ChangesView.vue')),
   admin('runs', 'PlusDispatchRuns', '检测记录', () => import('./views/RunsView.vue')),
-  admin('events', 'PlusDispatchEvents', '异常待处理', () => import('./views/EventsView.vue')),
-  admin('adjust', 'PlusDispatchAdjust', '调度调整', () => import('./views/AdjustView.vue')),
   admin('config', 'PlusDispatchConfig', '检测配置', () => import('./views/ConfigView.vue')),
   admin('audit', 'PlusDispatchAudit', '操作日志', () => import('./views/AuditView.vue'))
 ]

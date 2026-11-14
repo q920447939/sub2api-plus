@@ -77,8 +77,7 @@ func (r *Repository) ClaimDuePlans(ctx context.Context, now time.Time, limit int
 	rows, err := r.db.QueryContext(ctx, `
 		UPDATE plus_dispatch_plan p SET next_run_at = $1 + make_interval(mins => p.interval_minutes)
 		WHERE p.id IN (SELECT id FROM plus_dispatch_plan WHERE enabled AND next_run_at <= $1 ORDER BY next_run_at LIMIT $2 FOR UPDATE SKIP LOCKED)
-		RETURNING p.id, p.item_id, p.platform, p.models, p.scopes, p.exclude_ids, p.interval_minutes,
-		          p.timeout_seconds, p.enabled, p.next_run_at, p.created_at, p.updated_at`, now, limit)
+		RETURNING `+planColsP, now, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -233,12 +232,12 @@ func (r *Repository) CountOutcomes(ctx context.Context, f RunFilter) (map[string
 	return out, rows.Err()
 }
 
-func (r *Repository) RecentRunsForJudge(ctx context.Context, perKey int) ([]Run, error) {
+func (r *Repository) RecentRuns(ctx context.Context, perKey int) ([]Run, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT `+runCols+` FROM (
 		  SELECT *, ROW_NUMBER() OVER (PARTITION BY item_id, cred_key, model ORDER BY id DESC) AS rn
 		  FROM plus_dispatch_run WHERE status = 'done' AND queued_at >= NOW() - INTERVAL '30 days'
-		) t WHERE rn <= $1`, perKey)
+		) t WHERE rn <= $1 ORDER BY id DESC`, perKey)
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +252,51 @@ func (r *Repository) RecentRunsForJudge(ctx context.Context, perKey int) ([]Run,
 	}
 	return out, rows.Err()
 }
+
+func (r *Repository) RunStats(ctx context.Context, since time.Time) ([]RunStat, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT item_id, account_id, model, outcome, COUNT(*), COALESCE(SUM(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)), 0)
+		FROM plus_dispatch_run WHERE status = 'done' AND queued_at >= $1 GROUP BY 1, 2, 3, 4`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RunStat
+	for rows.Next() {
+		var s RunStat
+		if err := rows.Scan(&s.ItemID, &s.AccountID, &s.Model, &s.Outcome, &s.N, &s.Tokens); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) LastRunAt(ctx context.Context) (map[string]time.Time, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT item_id, cred_key, model, MAX(queued_at) FROM plus_dispatch_run
+		WHERE queued_at >= NOW() - INTERVAL '8 days' GROUP BY 1, 2, 3`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]time.Time{}
+	for rows.Next() {
+		var (
+			item  int64
+			cred  string
+			model string
+			at    time.Time
+		)
+		if err := rows.Scan(&item, &cred, &model, &at); err != nil {
+			return nil, err
+		}
+		out[runKeyOf(item, cred, model)] = at
+	}
+	return out, rows.Err()
+}
+
+func runKeyOf(item int64, cred, model string) string { return itoa(item) + "|" + cred + "|" + model }
 
 func (r *Repository) PruneRuns(ctx context.Context, before time.Time) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM plus_dispatch_run WHERE status = 'done' AND queued_at < $1`, before)

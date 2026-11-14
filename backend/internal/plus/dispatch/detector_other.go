@@ -28,15 +28,13 @@ func (p *ArchiveParams) promptFor(platform string) string {
 // ArchiveDetector 存档题
 type ArchiveDetector struct{ LLM Completer }
 
-var _ ActiveDetector = ArchiveDetector{}
+var _ Detector = ArchiveDetector{}
 
 func (ArchiveDetector) Spec() TypeSpec {
 	return TypeSpec{
-		Key: "archive", Name: "存档题", Active: true, Gallery: true,
+		Key: "archive", Name: "存档题", Gallery: true, HasPrompt: true, DefaultEvery: 30,
 		Description: "发一道开放题（比如画一段 HTML 动画），只保存作品给人看，不判对错。",
-		Supports:    "所有平台",
-		JudgeDesc:   "不判定，只存档",
-		PlanFields:  []string{"models", "pick", "every", "timeout"},
+		RuleFields:  []RuleField{},
 		Outcomes: []OutcomeSpec{
 			{Key: OutcomeSaved, Label: "已存档", Tone: "ok"},
 			{Key: OutcomeError, Label: "生成失败", Tone: "err"},
@@ -51,7 +49,7 @@ func (ArchiveDetector) NormalizeItem(params, _ json.RawMessage) (json.RawMessage
 	}
 	p.Prompt = strings.TrimSpace(p.Prompt)
 	if p.Prompt == "" {
-		return nil, nil, fmt.Errorf("%w：默认题面不能为空", ErrInvalid)
+		return nil, nil, fmt.Errorf("%w：题面不能为空", ErrInvalid)
 	}
 	if p.MaxTokens <= 0 {
 		p.MaxTokens = 32000
@@ -116,70 +114,12 @@ func (d ArchiveDetector) Execute(ctx context.Context, in ExecInput) ExecResult {
 
 func (ArchiveDetector) Classify(_ Item, r Run) string { return r.Outcome }
 
-func (ArchiveDetector) Judge(env *JudgeEnv, item Item, s Subject) Verdict {
-	rs := env.RunsOf(item.ID, s.CredKey, s.Model)
-	if len(rs) == 0 {
-		return Verdict{Level: LevelNone, Short: "还没执行", Long: "计划已覆盖，还没执行过"}
-	}
+func (ArchiveDetector) Judge(_ Item, rs []Run) *Verdict {
 	n := 0
 	for _, r := range rs {
 		if r.Outcome == OutcomeSaved {
 			n++
 		}
 	}
-	return Verdict{Level: LevelInfo, Short: fmt.Sprintf("%d 份作品", n), Long: fmt.Sprintf("近期存档 %d 份作品（不判对错）", n)}
-}
-
-// ---------- 账号属性：直接读取账号上的配置 ----------
-
-// FieldDetector 账号属性（目前是成本倍率）
-type FieldDetector struct{}
-
-var _ Detector = FieldDetector{}
-
-func (FieldDetector) Spec() TypeSpec {
-	return TypeSpec{
-		Key: "field", Name: "账号属性",
-		Description: "直接读取账号上的配置，例如成本倍率（开启上游倍率同步后自动更新）。",
-		Supports:    "所有账号", JudgeDesc: "不判定，只展示",
-	}
-}
-
-func (FieldDetector) NormalizeItem(params, _ json.RawMessage) (json.RawMessage, json.RawMessage, error) {
-	var p struct {
-		Field string `json:"field"`
-	}
-	if err := decodeInto(params, &p); err != nil {
-		return nil, nil, err
-	}
-	if p.Field == "" {
-		p.Field = "rate_multiplier"
-	}
-	if p.Field != "rate_multiplier" {
-		return nil, nil, fmt.Errorf("%w：目前只能读取成本倍率", ErrInvalid)
-	}
-	return mustJSON(p), json.RawMessage(`{}`), nil
-}
-
-func (FieldDetector) Judge(env *JudgeEnv, _ Item, s Subject) Verdict {
-	a := env.Catalog.Accounts[s.AccountID]
-	if a == nil {
-		return Verdict{Level: LevelNone}
-	}
-	minRate, has := a.Rate, false
-	if g := env.Catalog.Groups[s.GroupID]; g != nil {
-		for _, id := range g.Accounts {
-			if x := env.Catalog.Accounts[id]; x != nil && id != a.ID {
-				has = true
-				if x.Rate < minRate {
-					minRate = x.Rate
-				}
-			}
-		}
-	}
-	long := fmt.Sprintf("成本倍率 %g", a.Rate)
-	if has {
-		long += fmt.Sprintf("，组内最低 %g", minRate)
-	}
-	return Verdict{Level: LevelInfo, Value: fptr(a.Rate), Short: fmt.Sprintf("倍率 %g", a.Rate), Long: long}
+	return &Verdict{Level: LevelInfo, Short: fmt.Sprintf("%d 份作品", n), Long: fmt.Sprintf("最近存档 %d 份作品（不判对错）", n), Valid: n}
 }

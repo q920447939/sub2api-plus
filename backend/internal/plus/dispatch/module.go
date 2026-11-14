@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/plus/channelstatus"
 	"github.com/Wei-Shaw/sub2api/internal/plus/dispatch/hook"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -20,50 +21,85 @@ func Register(db *sql.DB, admin *gin.RouterGroup) {
 
 	// 检测器注册表：新增一种检测办法只需要在这里加一行
 	registry := NewRegistry(
-		TrafficDetector{},
 		&FingerprintDetector{LLM: llm, Library: library},
 		GradedDetector{LLM: llm},
 		ArchiveDetector{LLM: llm},
-		FieldDetector{},
 	)
 
 	catalog := SQLCatalog{DB: db}
-	trafficStore := SQLTraffic{DB: db}
-	trafficLoader := &TrafficLoader{Store: trafficStore}
-	snap := &Snapshotter{Catalog: catalog, Traffic: trafficLoader, TTL: time.Minute}
+	traffic := &TrafficLoader{Store: SQLTraffic{DB: db}}
+	snap := &Snapshotter{Catalog: catalog, Traffic: traffic, TTL: time.Minute}
 	planner := Planner{Registry: registry}
-	audit := Auditor{Store: repo}
 
 	// 执行层：钩子引擎 + 规则刷新
 	engine := hook.New()
-	runner := &hook.Runner{Engine: engine, Loader: repo, Sink: repo}
+	runner := &hook.Runner{Engine: engine, Loader: repo}
 	runner.Start(ctx)
-	service.SetPlusDispatchFilter(engine)
+	service.SetPlusDispatchFilter(dispatchFilter{engine})
 
-	exec := &Executor{Runs: repo, Setup: repo, Registry: registry, Channel: DirectChannel{Catalog: catalog}}
+	detect := &DetectionLoader{Config: repo, Setup: repo, Runs: repo, Ignores: repo, Reg: registry}
+	exec := &Executor{Runs: repo, Setup: repo, Registry: registry, Channel: DirectChannel{Catalog: catalog},
+		OnFinish: detect.Invalidate}
 	sched := &Scheduler{Config: repo, Setup: repo, Runs: repo, Planner: planner, Snap: snap, Exec: exec}
-	eval := &Evaluator{Config: repo, Setup: repo, Runs: repo, Verdicts: repo, Events: repo, Registry: registry, Planner: planner,
-		Snap: snap, Traffic: trafficLoader}
-	boards := BoardLoader{Config: repo, Setup: repo, Verdicts: repo, Events: repo, Adjust: repo, Snap: snap, Registry: registry}
 
-	setup := &SetupService{Config: repo, Setup: repo, Registry: registry, Planner: planner, Snap: snap, Sched: sched, Audit: audit,
-		OnChange: func() {
-			runner.Reload(context.Background())
-			snap.Invalidate()
-			if err := eval.Run(context.Background()); err != nil {
-				log.Printf("[plus.dispatch] evaluate after change: %v", err)
-			}
-		}}
-	query := &QueryService{Boards: boards, Runs: repo, Verdicts: repo, EventDB: repo, Adjust: repo, Traffic: trafficStore,
-		Registry: registry, Planner: planner, Eval: eval, Library: library}
-	adjust := &AdjustService{Boards: boards, Store: repo, Events: repo, Traffic: trafficStore, DB: db, Audit: audit,
-		Reload: func() { runner.Reload(context.Background()) }}
-
-	(&Handler{Setup: setup, Query: query, Adjust: adjust, Audit: repo, Eval: eval}).Register(admin)
+	svc := &Service{Config: repo, Setup: repo, Runs: repo, Ignores: repo, Rules: repo, AuditDB: repo,
+		Channel: channelstatus.NewRepository(db), Registry: registry, Planner: planner, Snap: snap, Detect: detect, Sched: sched,
+		Library: library, OnRules: runner.Wake, LastSeen: lastSeenQuery(db)}
+	(&Handler{S: svc}).Register(admin)
 
 	sched.Start(ctx)
-	eval.Start(ctx)
-	log.Printf("[plus.dispatch] 上游调度台已启动（%d 种检测器）", len(registry.Specs()))
+	library.Start(ctx)
+	go refreshTraffic(ctx, traffic, snap)
+	log.Printf("[plus.dispatch] 上游调度台已启动（%d 种检测方式）", len(registry.Specs()))
 }
 
-var _ service.PlusDispatchFilter = (*hook.Engine)(nil)
+// dispatchFilter 把钩子引擎接到上游选号（service 和 hook 互不依赖，在这里转一下请求结构）
+type dispatchFilter struct{ *hook.Engine }
+
+func (f dispatchFilter) FilterAccounts(ctx context.Context, q service.PlusDispatchQuery, ids []int64, supports []bool) ([]bool, bool) {
+	return f.Engine.FilterAccounts(ctx, hook.Request{GroupID: q.GroupID, Model: q.Model, Key: q.Key, Bound: q.Bound}, ids, supports)
+}
+
+var _ service.PlusDispatchFilter = dispatchFilter{}
+
+// refreshTraffic 每 2 分钟重算最近两个小时的流量小时桶（第一次回填 8 天）
+func refreshTraffic(ctx context.Context, tl *TrafficLoader, snap *Snapshotter) {
+	t := time.NewTicker(2 * time.Minute)
+	defer t.Stop()
+	for {
+		if err := tl.Refresh(ctx, time.Now()); err != nil {
+			log.Printf("[plus.dispatch] refresh traffic: %v", err)
+		} else {
+			snap.Invalidate()
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// lastSeenQuery 各账号近 2 小时内最近一次请求的时间
+func lastSeenQuery(db *sql.DB) func(ctx context.Context) map[int64]time.Time {
+	return func(ctx context.Context) map[int64]time.Time {
+		out := map[int64]time.Time{}
+		rows, err := db.QueryContext(ctx, `SELECT account_id, MAX(created_at) FROM usage_logs
+			WHERE created_at >= NOW() - INTERVAL '2 hours' AND account_id > 0 GROUP BY 1`)
+		if err != nil {
+			log.Printf("[plus.dispatch] last seen: %v", err)
+			return out
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				id int64
+				at time.Time
+			)
+			if rows.Scan(&id, &at) == nil {
+				out[id] = at
+			}
+		}
+		return out
+	}
+}

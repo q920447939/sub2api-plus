@@ -14,6 +14,7 @@ type Executor struct {
 	Setup    SetupStore
 	Registry *Registry
 	Channel  DirectChannel
+	OnFinish func() // 有新结果：让结论重新计算
 }
 
 func (e *Executor) Execute(ctx context.Context, run Run) {
@@ -21,6 +22,9 @@ func (e *Executor) Execute(ctx context.Context, run Run) {
 	res := e.execute(ctx, run)
 	if err := e.Runs.FinishRun(context.Background(), run.ID, res, int(time.Since(start).Milliseconds())); err != nil {
 		log.Printf("[plus.dispatch] finish run %d: %v", run.ID, err)
+	}
+	if e.OnFinish != nil {
+		e.OnFinish()
 	}
 }
 
@@ -38,8 +42,8 @@ func (e *Executor) execute(ctx context.Context, run Run) ExecResult {
 	if item == nil {
 		return errResult("", fmt.Errorf("检测项已删除"))
 	}
-	det := e.Registry.Active(item.Type)
-	if det == nil {
+	det, ok := e.Registry.Get(item.Type)
+	if !ok {
 		return errResult("", fmt.Errorf("检测项类型 %s 不支持主动检测", item.Type))
 	}
 	var plan *Plan
@@ -142,7 +146,7 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	if _, err := s.Runs.FailStale(ctx, time.Now().Add(-40*time.Minute), "检测超时未结束（进程可能中断）"); err != nil {
 		log.Printf("[plus.dispatch] fail stale: %v", err)
 	}
-	if cfg.Mode != ModeOff {
+	if cfg.Detect {
 		plans, err := s.Runs.ClaimDuePlans(ctx, time.Now(), 50)
 		if err != nil {
 			log.Printf("[plus.dispatch] claim plans: %v", err)
@@ -174,24 +178,25 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	}
 }
 
-// EnqueuePlans 把计划展开成排队记录，返回新排队的条数
+// EnqueuePlans 把计划展开成排队记录，返回新排队的条数。manual = 立即执行（不受启用开关和备用号间隔限制）
 func (s *Scheduler) EnqueuePlans(ctx context.Context, plans []Plan, trigger string, by *int64) (int, error) {
 	items, err := s.Setup.ListItems(ctx)
 	if err != nil {
 		return 0, err
 	}
-	dims, err := s.Setup.ListDimensions(ctx)
+	cfg, _, err := s.Config.LoadConfig(ctx)
 	if err != nil {
 		return 0, err
-	}
-	dimOn := map[int64]bool{}
-	for _, d := range dims {
-		dimOn[d.ID] = d.Enabled
 	}
 	snap, err := s.Snap.Get(ctx, false)
 	if err != nil {
 		return 0, err
 	}
+	last, err := s.Runs.LastRunAt(ctx)
+	if err != nil {
+		return 0, err
+	}
+	manual := trigger == "manual"
 	n := 0
 	for _, p := range plans {
 		var item *Item
@@ -200,13 +205,10 @@ func (s *Scheduler) EnqueuePlans(ctx context.Context, plans []Plan, trigger stri
 				item = &items[i]
 			}
 		}
-		if item == nil || !item.Enabled || !dimOn[item.DimensionID] {
+		if item == nil || (!item.Enabled && !manual) {
 			continue
 		}
-		if trigger == "manual" {
-			p.Enabled = true // 立即执行不受启用开关影响
-		}
-		for _, t := range s.Planner.Targets(ctx, p, *item, snap.Catalog, snap.Traffic) {
+		for _, t := range s.Planner.Due(ctx, p, *item, snap.Catalog, snap.Traffic, last, time.Duration(cfg.IdleMinutes)*time.Minute, time.Now(), manual) {
 			pid := p.ID
 			_, ok, err := s.Runs.Enqueue(ctx, Run{PlanID: &pid, ItemID: item.ID, AccountID: t.AccountID, CredKey: t.credKey,
 				Platform: p.Platform, Model: t.Model, Trigger: trigger, TriggeredBy: by})
@@ -219,4 +221,14 @@ func (s *Scheduler) EnqueuePlans(ctx context.Context, plans []Plan, trigger stri
 		}
 	}
 	return n, nil
+}
+
+// EnqueueOne 手动检测一个 账号 × 模型
+func (s *Scheduler) EnqueueOne(ctx context.Context, item Item, a *CatAccount, model string, by *int64) (bool, error) {
+	_, ok, err := s.Runs.Enqueue(ctx, Run{ItemID: item.ID, AccountID: a.ID, CredKey: a.CredKey, Platform: a.Platform, Model: model,
+		Trigger: "manual", TriggeredBy: by})
+	if ok {
+		s.Wake()
+	}
+	return ok, err
 }

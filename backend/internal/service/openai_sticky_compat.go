@@ -119,7 +119,7 @@ func (s *OpenAIGatewayService) openAIStickyLegacyTTL(ttl time.Duration) time.Dur
 	return legacyTTL
 }
 
-func (s *OpenAIGatewayService) getStickySessionAccountID(ctx context.Context, groupID *int64, sessionHash string) (int64, error) {
+func (s *OpenAIGatewayService) getStickySessionAccountIDUpstream(ctx context.Context, groupID *int64, sessionHash string) (int64, error) { // [plus] 原名在 plus_dispatch_hook.go
 	if s == nil || s.cache == nil {
 		return 0, nil
 	}

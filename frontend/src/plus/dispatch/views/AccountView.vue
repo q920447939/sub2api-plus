@@ -1,244 +1,171 @@
-<!-- [plus] 上游调度台 · 单个账号：先给每个维度的结论，展开看每个检测项的依据。依据按检测方式展示，页面里没有写死的题目名。 -->
+<!-- [plus] 上游调度台 · 账号详情：一排大数字 + 大状态条；模型列表（同一套列，点开看指标、检测、趋势和同类对比）；所在分组；调整记录 -->
 <template>
   <AppLayout>
     <div class="space-y-4" data-testid="dispatch-account">
-      <div v-if="!data" class="py-16 text-center text-sm text-gray-400">{{ error || '加载中…' }}</div>
+      <router-link :to="`${DISPATCH_BASE}/board`" class="text-sm text-primary-600">‹ 上游账号</router-link>
+      <div v-if="!d" class="py-16 text-center text-sm text-gray-400">{{ error || '加载中…' }}</div>
       <template v-else>
-        <section class="card p-5">
-          <div class="flex flex-wrap items-start gap-3">
-            <div class="min-w-0">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ data.account.name }}</h2>
-              <div class="mt-1 text-sm text-gray-500">{{ headline }}</div>
-            </div>
-            <div class="ml-auto flex flex-wrap items-center gap-2">
-              <PSelect v-if="data.groups?.length > 1" :model-value="groupId" width-class="w-40" :options="data.groups.map((g: any) => ({ value: g.id, label: g.name }))" @change="(v) => switchGroup(String(v))" />
-              <router-link class="btn btn-secondary" :to="{ path: `${BASE}/runs`, query: { account: data.account.id } }">检测记录</router-link>
-              <button v-if="data.account.direct" type="button" class="btn btn-secondary" data-testid="dispatch-account-checkup" @click="checkupTarget = { id: data.account.id, name: data.account.name, platform: data.account.platform, direct: data.account.direct }">立即体检</button>
-              <DiagnoseButton @done="load" />
-              <button type="button" class="btn btn-primary" data-testid="dispatch-account-adjust" @click="openAdjust">调整</button>
-            </div>
+        <div class="flex flex-wrap items-start gap-3">
+          <div>
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ a.name }}</h1>
+            <div class="mb-2.5 mt-1 text-sm text-gray-500">{{ platformName(a.platform) }} · {{ groupsText }} · 最近请求 {{ lastText(a.last_at, a.last_hour) }}</div>
+            <Tags :rules="a.rules" :probes="a.probes" :groups="a.group_ids.length" :group-name="gname" :is-new="a.is_new" :created-at="a.created_at" :down-models="a.down_models" @probe="probe = { accountId: a.id, itemId: $event }" />
           </div>
-          <div class="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4 dark:border-dark-700">
-            <LevelPill :level="data.worst" />
-            <span class="text-sm" :class="data.worst === 'bad' ? 'text-red-600' : data.worst === 'warn' ? 'text-amber-700' : 'text-gray-700 dark:text-dark-100'">{{ data.one_line }}</span>
-            <span v-if="data.adjustment" class="ml-auto rounded-md bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300" :title="data.adjustment.reason">{{ adjustText(data.adjustment.action, data.adjustment.factor) }} · {{ agoText(data.adjustment.created_at) }}</span>
-            <span v-if="data.suggest && data.suggest.action !== 'normal' && !data.suggest.settled" class="rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800" :class="data.adjustment ? '' : 'ml-auto'">建议{{ data.suggest.action === 'pause' ? '暂停' : ' ×' + data.suggest.factor }}</span>
+          <div class="ml-auto flex items-center gap-3">
+            <div class="inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-dark-700">
+              <button v-for="g in GRANS" :key="g.v" type="button" class="rounded-md px-3 py-1 text-sm" :class="gran === g.v ? 'bg-white font-medium shadow-sm dark:bg-dark-900' : 'text-gray-500'" @click="gran = g.v">{{ g.n }}</button>
+            </div>
+            <button type="button" class="btn" :class="a.rules.length ? 'btn-secondary' : 'btn-primary'" @click="weight = { accountId: a.id }">权重 · {{ flowText(a.rules, a.group_ids.length, null).text }}</button>
           </div>
-        </section>
-
-        <div v-if="data.models?.length > 1" class="flex flex-wrap items-center gap-2 text-sm">
-          <button v-for="m in data.models" :key="m.model" type="button" class="rounded-lg border px-3 py-1 text-xs" :class="m.model === data.model ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200'" @click="switchModel(m.model)">
-            {{ m.model }}<i v-if="m.worst === 'bad' || m.worst === 'warn'" class="ml-1 inline-block h-2 w-2 rounded-full" :style="{ background: LEVEL_DOT[m.worst as Level] }" />
-          </button>
         </div>
-        <div v-else-if="!data.models?.length" class="py-8 text-center text-sm text-gray-400">暂无结论</div>
 
-        <!-- 维度 -->
-        <div v-for="blk in data.dims" :key="blk.dimension.id" class="overflow-hidden rounded-xl border bg-white dark:bg-dark-800" :class="blk.result.level === 'bad' ? 'border-red-300' : blk.result.level === 'warn' ? 'border-amber-300' : 'border-gray-200 dark:border-dark-700'" data-testid="dispatch-dim-block">
-          <div class="flex cursor-pointer flex-wrap items-center gap-2.5 px-4 py-3" :class="blk.result.level === 'bad' ? 'bg-red-50 dark:bg-red-900/10' : blk.result.level === 'warn' ? 'bg-amber-50 dark:bg-amber-900/10' : ''" @click="opened[blk.dimension.id] = !isOpen(blk)">
-            <b class="min-w-[56px]">{{ blk.dimension.name }}</b>
-            <span class="rounded-full px-2 text-xs" :class="ROLE_CLASS[blk.dimension.role as Role]">{{ ROLE_TEXT[blk.dimension.role as Role] }}</span>
-            <LevelPill :level="blk.result.level" :text="blk.result.level === 'info' ? blk.result.short : blk.result.muted ? '正常（已标误报）' : undefined" />
-            <span class="min-w-[220px] flex-1 text-sm text-gray-600 dark:text-dark-200">{{ headOf(blk) }}</span>
-            <Icon name="chevronDown" size="sm" class="text-gray-400 transition-transform" :class="isOpen(blk) ? 'rotate-180' : ''" />
-          </div>
-          <div v-if="isOpen(blk)" class="border-t border-gray-100 px-4 pb-3 dark:border-dark-700">
-            <div v-if="!blk.items?.length" class="py-3 text-sm text-gray-400">没有检测项</div>
-            <div v-for="e in blk.items ?? []" :key="e.item.id" class="border-b border-dashed border-gray-200 py-3 last:border-b-0 dark:border-dark-700">
-              <div class="mb-2 flex flex-wrap items-center gap-2">
-                <b>{{ e.item.name }}</b>
-                                <span v-if="!e.judged" class="rounded-full bg-gray-100 px-2 text-xs text-gray-500">仅展示</span>
-                <LevelPill :level="e.verdict.level" :text="e.verdict.level === 'info' ? e.verdict.short : undefined" />
-                <span class="text-xs text-gray-400">{{ planLine(e) }}</span>
-              </div>
-              <div v-if="e.verdict.level === 'none'" class="text-sm text-gray-500">
-                {{ e.verdict.long }}
-                <router-link v-if="e.spec.active" class="ml-1 text-primary-600 hover:underline" :to="{ path: `${BASE}/config`, query: { tab: 'plans', item: e.item.id } }">计划</router-link>
-              </div>
-              <template v-else>
-                <div class="text-sm" :class="e.verdict.level === 'bad' ? 'text-red-600' : e.verdict.level === 'warn' ? 'text-amber-700' : 'text-gray-700 dark:text-dark-100'">{{ e.verdict.long }}</div>
+        <ApplyOff v-if="!applyOn && a.rules.length" :rules="a.rules.length" @changed="load" />
 
-                <!-- 流量统计：参照 + 24 小时小图 -->
-                <div v-if="e.item.type === 'traffic'" class="mt-2 grid gap-4 lg:grid-cols-[1fr_420px]">
-                  <div class="space-y-1 text-xs text-gray-500">
-                    <div v-if="e.verdict.evidence?.reference_label">参照：{{ e.verdict.evidence.reference_label }}<template v-if="e.verdict.evidence.peers?.length">（{{ peerNames(e.verdict.evidence.peers) }}）</template></div>
-                    <div :title="ruleText(e)">规则：{{ ruleText(e) }}</div>
-                    <router-link class="mt-1 inline-block text-primary-600 hover:underline" :to="{ path: `${BASE}/compare`, query: { group: groupId, model: data.model, item: e.item.id, highlight: data.account.id } }">同类对比</router-link>
-                  </div>
-                  <LineChart v-if="e.series" :lines="seriesLines(e)" :labels="e.series.map((p: any) => hhmm(p.t))" :fmt="(v: number) => fmtMetric(e.metric, v)" :height="140" :legend="false" />
-                </div>
+        <div class="card grid grid-flow-col auto-cols-fr divide-x divide-gray-100 dark:divide-dark-700">
+          <Kpi label="健康分" :value="String(c.score ?? '--')" :sub="STATUS_META[c.status].label" :tone="LV.score(c.score)" />
+          <Kpi label="24 小时请求" :value="num(c.n24)" />
+          <Kpi label="错误率" :value="pct1(c.err_pct)" :sub="times(c.failed)" :tone="LV.err(c.err_pct)" />
+          <Kpi label="首字耗时" :value="c.ttft == null ? '—' : `${c.ttft.toFixed(1)} 秒`" :tone="LV.ttft(c.ttft)" />
+          <Kpi label="输出速度" :value="c.tps == null ? '—' : String(Math.round(c.tps))" :sub="c.tps == null ? '' : 'tok/s'" />
+          <Kpi label="缓存命中" :value="c.cache == null ? '—' : `${c.cache.toFixed(1)}%`" :sub="c.cache_read ? tok(c.cache_read) : ''" :tone="LV.cache(c.cache)" />
+          <Kpi label="7 天成功" :value="num(a.week_ok)" :sub="`失败 ${num(a.week_fail)}`" />
+        </div>
+        <div class="card px-5 py-4">
+          <StatusBar :bars="a.bars" :gran="gran" :marks="a.marks" tall />
+          <div class="mt-2.5 flex justify-between text-xs text-gray-400"><span>{{ gran === 'day' ? '30 天前' : '48 小时前' }}</span><span>现在</span></div>
+        </div>
 
-                <!-- 主动检测：最近 10 次 -->
-                <div v-if="e.spec.active" class="mt-2">
-                  <div class="mb-1 text-xs text-gray-500">最近 {{ e.runs?.length ?? 0 }} 次</div>
-                  <div v-if="e.spec.gallery" class="flex gap-2 overflow-x-auto pb-1">
-                    <RunThumb v-for="r in e.runs" :key="r.id" :run="r" @open="runId = r.id" />
-                  </div>
-                  <div v-else class="flex flex-wrap gap-1">
-                    <button v-for="r in e.runs" :key="r.id" type="button" class="rounded border px-1.5 py-0.5 text-[11px]" :class="TONE_CLASS[outcomeOf(e.spec, r.outcome).tone]" :title="r.summary" @click="runId = r.id">
-                      {{ runChip(e, r) }} <span class="text-gray-400">{{ hhmm(r.t) }}</span>
-                    </button>
-                  </div>
-                  <div v-if="e.verdict.evidence?.distribution?.length" class="mt-2 max-w-md space-y-1">
-                    <div class="text-xs text-gray-500">识别结果分布</div>
-                    <div v-for="d in e.verdict.evidence.distribution" :key="d.model" class="flex items-center gap-2 text-xs">
-                      <span class="w-44 truncate font-mono">{{ d.model }}</span>
-                      <span class="h-2 flex-1 overflow-hidden rounded bg-gray-100"><i class="block h-full" :class="d.model === e.verdict.evidence.distribution[0].model && e.verdict.level !== 'ok' ? 'bg-red-500' : 'bg-primary-500'" :style="{ width: (d.n / distTotal(e)) * 100 + '%' }" /></span>
-                      <span class="w-10 text-right">{{ d.n }} 次</span>
-                    </div>
-                  </div>
-                  <div v-if="e.verdict.evidence?.peers?.length && e.item.type === 'graded'" class="mt-2 text-xs text-gray-500">
-                    同组对比：
-                    <span v-for="p in e.verdict.evidence.peers" :key="p.account_id" class="mr-3">{{ accountName(p.account_id) }} {{ p.pass }}/{{ p.n }}</span>
-                  </div>
-                  <div class="mt-2 flex gap-4 text-xs">
-                    <router-link v-if="e.spec.comparable" class="text-primary-600 hover:underline" :to="{ path: `${BASE}/compare`, query: { group: groupId, model: data.model, item: e.item.id, highlight: data.account.id } }">同类对比</router-link>
-                    <router-link class="text-primary-600 hover:underline" :to="{ path: `${BASE}/runs`, query: { item: e.item.id, account: data.account.id } }">检测记录</router-link>
-                  </div>
-                </div>
+        <div class="px-1 pt-2 text-sm text-gray-500">模型</div>
+        <div class="card overflow-x-auto p-0">
+          <table class="table min-w-[1250px]">
+            <thead><tr><th class="sticky left-0 z-10">模型</th><th>{{ gran === 'day' ? '近 30 天' : '近 48 小时' }}</th><th>状态</th><ColHeads /><th class="sticky right-0 z-10">权重</th></tr></thead>
+            <tbody>
+              <template v-for="m in d.models" :key="m.model">
+                <tr class="cursor-pointer" :class="openModel === m.model ? 'bg-gray-50 dark:bg-dark-800' : ''" data-testid="dispatch-model-row" @click="openModel = openModel === m.model ? '' : m.model">
+                  <td class="sticky left-0 z-[1] whitespace-nowrap bg-white dark:bg-dark-900"><span class="mr-1.5 inline-block text-gray-400 transition-transform" :class="openModel === m.model ? 'rotate-90' : ''">›</span><span class="font-mono font-semibold">{{ m.model }}</span></td>
+                  <td class="min-w-[300px]"><StatusBar :bars="m.bars" :gran="gran" :marks="marksOf(m.model)" /></td>
+                  <td @click.stop><Tags :rules="a.rules" :probes="m.probes" :groups="a.group_ids.length" :group-name="gname" :model="m.model" @probe="probe = { accountId: a.id, itemId: $event, model: m.model }" /></td>
+                  <ColCells :c="m.cols" />
+                  <td class="sticky right-0 z-[1] bg-white dark:bg-dark-900" @click.stop><FlowButton :rules="a.rules" :groups="a.group_ids.length" :model="m.model" @click="weight = { accountId: a.id, model: m.model }" /></td>
+                </tr>
+                <tr v-if="openModel === m.model">
+                  <td colspan="9" class="bg-gray-50/60 dark:bg-dark-800/40">
+                    <ModelPanel :account-id="a.id" :model="m.model" :account-name="a.name" :marks="marksOf(m.model)" @probe="probe = { accountId: a.id, itemId: $event, model: m.model }" @open-account="openAccount" />
+                  </td>
+                </tr>
               </template>
-            </div>
-          </div>
+              <tr v-if="!d.models.length"><td colspan="9" class="py-10 text-center text-sm text-gray-400">近 24 小时没有请求，也没有检测过</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-if="d.quiet" class="px-1 text-xs text-gray-400">另有 {{ d.quiet }} 个模型请求很少</div>
+
+        <div class="px-1 pt-2 text-sm text-gray-500">所在分组</div>
+        <div class="card overflow-x-auto p-0">
+          <table class="table">
+            <thead><tr><th>分组</th><th>近 24 小时</th><th>健康分</th><th>承接流量</th><th>同组账号</th></tr></thead>
+            <tbody>
+              <tr v-for="g in d.groups" :key="g.group_id">
+                <td class="whitespace-nowrap font-semibold">{{ g.name }}</td>
+                <td class="min-w-[200px]"><StatusBar :bars="g.bars" fixed /></td>
+                <td class="whitespace-nowrap"><div class="text-base font-semibold tabular-nums"><span :class="LV.score(g.score)">{{ g.score ?? '--' }}</span><small class="text-xs font-normal text-gray-400">/100</small></div><div class="text-xs text-gray-500">24h {{ times(g.n24) }}</div></td>
+                <td class="whitespace-nowrap"><span class="mr-2 inline-block h-1.5 w-28 overflow-hidden rounded bg-gray-200 align-middle dark:bg-dark-600"><i class="block h-full rounded bg-gray-500" :style="{ width: `${g.pct}%` }" /></span><b class="tabular-nums">{{ pct(g.pct) }}</b></td>
+                <td class="text-sm text-gray-500">{{ g.others.filter((o) => o.pct > 0).map((o) => `${aname(o.account_id)} ${pct(o.pct)}`).join('  ') || '只有它一个账号' }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <div class="grid gap-4 lg:grid-cols-2">
-          <div class="card p-4">
-            <div class="mb-3 text-sm font-medium text-gray-900 dark:text-white">状态变化 <span class="font-normal text-gray-400">48 小时</span></div>
-            <div v-if="!data.changes?.length" class="text-sm text-gray-400">无</div>
-            <div v-else class="space-y-1.5 border-l-2 border-gray-200 pl-3">
-              <div v-for="c in data.changes" :key="c.id" class="relative text-sm">
-                <i class="absolute -left-[19px] top-1.5 h-2.5 w-2.5 rounded-full" :style="{ background: LEVEL_DOT[c.to as Level] }" />
-                <span class="text-xs text-gray-400">{{ fullTime(c.created_at) }}</span>
-                {{ LEVEL_TEXT[c.from as Level] }} → <b>{{ LEVEL_TEXT[c.to as Level] }}</b> · {{ c.model }} · {{ c.text }}
-              </div>
-            </div>
+        <template v-if="d.records.length">
+          <div class="px-1 pt-2 text-sm text-gray-500">调整记录</div>
+          <div class="card overflow-hidden p-0">
+            <RecordCard v-for="r in d.records" :key="r.id" :rec="r" :names="d.names" @undo="undo" @move-away="moveAway" />
           </div>
-          <div class="card p-4">
-            <div class="mb-3 text-sm font-medium text-gray-900 dark:text-white">调整历史</div>
-            <div v-if="!data.adjust_logs?.length" class="text-sm text-gray-400">无</div>
-            <div v-for="l in data.adjust_logs ?? []" :key="l.id" class="flex flex-wrap items-center gap-2 border-b border-dashed border-gray-100 py-1.5 text-sm last:border-0">
-              <span class="text-xs text-gray-400">{{ fullTime(l.created_at) }}</span>
-              <span>{{ adjustText(l.from_action, l.from_factor) }} → <b>{{ adjustText(l.to_action, l.to_factor) }}</b></span>
-              <span class="text-xs text-gray-500">{{ l.operator }} · {{ l.reason }}</span>
-              <span class="flex-1" />
-              <router-link class="text-xs text-primary-600 hover:underline" :to="{ path: `${BASE}/adjust`, query: { tab: 'history', log: l.id } }">效果</router-link>
-            </div>
-          </div>
-        </div>
+        </template>
       </template>
     </div>
-    <RunDetailDialog :run-id="runId" @close="runId = null" @rerun="runId = null" />
-    <CheckupDialog :target="checkupTarget" @close="checkupTarget = null" />
-    <AdjustDialog :target="adjustTarget" @close="adjustTarget = null" @done="adjustTarget = null; load()" />
+    <WeightDialog :target="weight" @close="weight = null" @saved="load" />
+    <ProbeDialog :target="probe" @close="probe = null" @changed="load" @open-run="runId = $event" />
+    <RunDialog :run-id="runId" @close="runId = null" />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { dispatchApi, type Level, type Role } from '../api'
-import { DISPATCH_BASE as BASE } from '../routes'
-import AdjustDialog, { type AdjustTarget } from '../shared/AdjustDialog.vue'
-import CheckupDialog, { type CheckupTarget } from '../shared/CheckupDialog.vue'
-import PSelect from '../shared/PSelect.vue'
-import LevelPill from '../shared/LevelPill.vue'
-import LineChart from '../shared/LineChart.vue'
-import Icon from '@/components/icons/Icon.vue'
-import DiagnoseButton from '../shared/DiagnoseButton.vue'
-import RunDetailDialog from '../shared/RunDetailDialog.vue'
-import RunThumb from '../shared/RunThumb.vue'
-import { adjustText, agoText, everyText, fmtMetric, fullTime, LEVEL_DOT, LEVEL_TEXT, outcomeOf, platformName, ROLE_CLASS, ROLE_TEXT, TONE_CLASS } from '../shared/format'
-import { ruleSentence } from '../shared/rules'
-import { meta, loadMeta } from '../shared/meta'
+import { dispatchApi, type AccountDetail, type Gran } from '../api'
+import { DISPATCH_BASE } from '../routes'
+import ApplyOff from '../shared/ApplyOff.vue'
+import ColCells from '../shared/ColCells.vue'
+import ColHeads from '../shared/ColHeads.vue'
+import FlowButton from '../shared/FlowButton.vue'
+import Kpi from '../shared/Kpi.vue'
+import ModelPanel from '../shared/ModelPanel.vue'
+import ProbeDialog from '../shared/ProbeDialog.vue'
+import RecordCard from '../shared/RecordCard.vue'
+import RunDialog from '../shared/RunDialog.vue'
+import StatusBar from '../shared/StatusBar.vue'
+import Tags from '../shared/Tags.vue'
+import WeightDialog, { type WeightTarget } from '../shared/WeightDialog.vue'
+import { LV, STATUS_META, flowText, lastText, num, pct, pct1, platformName, times, tok } from '../shared/format'
 
+const GRANS = [{ v: 'hour' as const, n: '按小时' }, { v: 'day' as const, n: '按天' }]
 const route = useRoute()
 const router = useRouter()
-const data = ref<any>(null)
+const appStore = useAppStore()
+const d = ref<AccountDetail | null>(null)
 const error = ref('')
+const gran = ref<Gran>('hour')
+const openModel = ref('')
+const applyOn = ref(true)
+const weight = ref<WeightTarget | null>(null)
+const probe = ref<{ accountId: number; itemId: number; model?: string } | null>(null)
 const runId = ref<number | null>(null)
-const opened = reactive<Record<number, boolean>>({})
-const adjustTarget = ref<AdjustTarget | null>(null)
-const checkupTarget = ref<CheckupTarget | null>(null)
 
-const accountId = computed(() => Number(route.params.id))
-const groupId = computed(() => Number(route.query.group) || data.value?.group?.id || 0)
-
-const headline = computed(() => {
-  const d = data.value
-  if (!d) return ''
-  const parts = [d.group.name, platformName(d.account.platform), d.account.base_url, `流量 ${d.share}%`, `倍率 ${d.account.rate_multiplier}`]
-  if (d.aliases?.length > 1) parts.push(`与 ${d.aliases.length - 1} 个账号同凭证`)
-  return parts.join(' · ')
+const id = computed(() => Number(route.params.id))
+const a = computed(() => d.value!.account)
+const c = computed(() => d.value!.account.cols)
+const gname = (gid: number) => d.value?.names.groups[String(gid)] ?? `#${gid}`
+const aname = (aid: number) => d.value?.names.accounts[String(aid)] ?? `#${aid}`
+const groupsText = computed(() => {
+  const ids = a.value.group_ids
+  return ids.length > 1 ? `${gname(ids[0])} 等 ${ids.length} 个分组` : ids.length ? gname(ids[0]) : '没有分组'
 })
+const marksOf = (model: string) => (d.value?.records ?? []).filter((r) => !r.model || r.model === model).map((r) => r.created_at)
 
 async function load() {
-  error.value = ''
   try {
-    void loadMeta()
-    data.value = await dispatchApi.account(accountId.value, Number(route.query.group) || 0, String(route.query.model ?? ''))
-    const dim = Number(route.query.dim)
-    if (dim) opened[dim] = true
+    const [detail, cfg] = await Promise.all([dispatchApi.account(id.value, gran.value), dispatchApi.config()])
+    d.value = detail
+    applyOn.value = cfg.config.apply
+    error.value = ''
   } catch (e) {
-    error.value = extractApiErrorMessage(e, '加载失败')
+    error.value = extractApiErrorMessage(e)
   }
 }
-watch(() => [route.params.id, route.query.group, route.query.model], load, { immediate: true })
+watch([id, gran], () => {
+  if (route.params.id) void load()
+}, { immediate: true })
 
-function switchGroup(g: string) {
-  void router.replace({ query: { ...route.query, group: g, model: undefined } })
-}
-function switchModel(m: string) {
-  void router.replace({ query: { ...route.query, model: m } })
+function openAccount(aid: number) {
+  openModel.value = ''
+  void router.push(`${DISPATCH_BASE}/account/${aid}`)
 }
 
-const isOpen = (blk: any) => opened[blk.dimension.id] ?? (blk.result.level === 'bad' || blk.result.level === 'warn')
-function headOf(blk: any) {
-  const r = blk.result
-  if (!r.item_id) return blk.items?.length ? '这个维度的检测项都没有覆盖这个账号' : '这个维度还没有检测项'
-  return `${data.value.item_names?.[r.item_id] ?? ''}：${r.long}`
-}
-function planLine(e: any) {
-  if (!e.spec.active) return e.item.type === 'traffic' ? '从真实流量统计，每 5 分钟汇总' : '读取账号配置'
-  if (!e.plan) return ''
-  const last = e.runs?.[0]
-  return `${platformName(e.plan.platform)} 计划 · ${everyText(e.plan.interval_minutes)}${last ? ` · 上次 ${hhmm(last.t)}` : ''}${e.next_run ? ` · 下次约 ${hhmm(e.next_run)}` : ''}`
-}
-const hhmm = (t: string) => {
-  const d = new Date(t)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-function seriesLines(e: any) {
-  const pts = e.series as any[]
-  const color = e.verdict.level === 'bad' ? '#dc2626' : e.verdict.level === 'warn' ? '#d97706' : '#0d9488'
-  return [
-    { id: 'v', name: '它', color, width: 2.2, values: pts.map((p) => p.v ?? null) },
-    { id: 'ref', name: '参照', color: '#64748b', dashed: true, values: pts.map((p) => p.ref ?? null) },
-    { id: 'warn', name: '超过就算可疑', color: '#f59e0b', dashed: true, width: 1, values: pts.map((p) => p.warn ?? null) }
-  ]
-}
-function ruleText(e: any) {
-  return ruleSentence(e.item, meta.value)
-}
-function runChip(e: any, r: any) {
-  const oc = outcomeOf(e.spec, r.outcome)
-  if (e.item.type === 'graded') return r.outcome === 'error' ? '! 出错' : `${r.detail?.answer || '没答出'} ${r.outcome === 'pass' ? '✓' : '✗'}`
-  if (e.item.type === 'fingerprint') return r.outcome === 'pass' ? '✓ 一致' : r.outcome === 'fail' ? `✗ ${r.detail?.prediction}` : oc.label
-  return oc.label
-}
-const distTotal = (e: any) => e.verdict.evidence.distribution.reduce((a: number, d: any) => a + d.n, 0) || 1
-function accountName(id: number) {
-  return meta.value?.accounts.find((a) => a.id === id)?.name ?? `#${id}`
-}
-const peerNames = (ids: number[]) => ids.map(accountName).join('、')
-
-function openAdjust() {
-  const d = data.value
-  adjustTarget.value = {
-    groupId: d.group.id, groupName: d.group.name, accountId: d.account.id, accountName: d.account.name, worst: d.worst, oneLine: d.one_line,
-    current: d.adjustment ?? null, suggest: d.suggest ?? null,
-    names: Object.fromEntries((meta.value?.accounts ?? []).map((a) => [String(a.id), a.name]))
+async function undo(rid: number) {
+  try {
+    await dispatchApi.undo(rid)
+    appStore.showSuccess('已恢复原样')
+    await load()
+  } catch (e) {
+    appStore.showError(extractApiErrorMessage(e))
   }
+}
+
+function moveAway(p: { accountId: number; models: string[] }) {
+  weight.value = { accountId: p.accountId, model: p.models[0], also: p.models.slice(1), note: '这些模型在它身上全部失败', pauseAll: true }
 }
 </script>

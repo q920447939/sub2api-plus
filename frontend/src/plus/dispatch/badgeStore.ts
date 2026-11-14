@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { dispatchApi } from './api'
 
-export const badges = ref<Record<string, { group_id: number; group: string; action: string; factor: number; text: string }[]>>({})
+export const badges = ref<Record<string, string>>({})
 let loadedAt = 0
 let inflight: Promise<void> | null = null
 

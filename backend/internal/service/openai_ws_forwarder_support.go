@@ -520,7 +520,7 @@ func (s *OpenAIGatewayService) ResolveAccountIDByPreviousResponseIDForScheduler(
 	return accountID
 }
 
-func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
+func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapabilityUpstream( // [plus] 原名在 plus_dispatch_hook.go
 	ctx context.Context,
 	groupID *int64,
 	previousResponseID string,

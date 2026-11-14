@@ -1,72 +1,84 @@
-<!-- [plus] 上游调度台 · 操作记录：配置改动（改前 / 改后）、确认和误报、每次调整、档位切换 -->
+<!-- [plus] 上游调度台 · 操作日志：谁、什么时候、改了什么（写清前 → 后），按类型筛选、搜索 -->
 <template>
   <AppLayout>
-    <div class="space-y-4" data-testid="dispatch-audit">
-      <div class="flex flex-wrap items-center gap-3">
-        <div class="relative w-full sm:w-64">
-          <Icon name="search" size="md" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input v-model="q.q" type="text" class="input pl-10" placeholder="搜索内容或操作人" @input="search" />
+    <TablePageLayout>
+      <template #filters>
+        <div class="flex flex-wrap items-center gap-3" data-testid="dispatch-audit">
+          <div class="inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-dark-700">
+            <button v-for="k in KINDS" :key="k.k" type="button" class="rounded-md px-3 py-1 text-sm" :class="kind === k.k ? 'bg-white font-medium shadow-sm dark:bg-dark-900' : 'text-gray-500'" @click="kind = k.k; page = 1">
+              {{ k.n }}<span class="ml-1 text-xs text-gray-400">{{ k.k ? counts[k.k] ?? 0 : total0 }}</span>
+            </button>
+          </div>
+          <div class="relative ml-auto w-64">
+            <Icon name="search" size="md" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input v-model="kw" class="input pl-10" placeholder="搜索内容或操作人" />
+          </div>
         </div>
-        <PSelect v-model="q.target_type" width-class="w-36" :options="[{ value: '', label: '全部对象' }, ...Object.entries(TARGETS).map(([value, label]) => ({ value, label }))]" />
-        <button type="button" class="btn btn-secondary ml-auto" title="刷新" @click="load"><Icon name="refresh" size="md" /></button>
-      </div>
-      <div class="card overflow-x-auto p-0">
-        <table class="w-full text-sm">
-          <thead><tr class="bg-gray-50 text-left text-xs text-gray-500 dark:bg-dark-800"><th class="px-3 py-2 font-normal">时间</th><th class="px-3 py-2 font-normal">操作人</th><th class="px-3 py-2 font-normal">对象</th><th class="px-3 py-2 font-normal">内容</th><th /></tr></thead>
+      </template>
+      <template #table>
+        <table class="table">
+          <thead><tr><th class="w-36">时间</th><th class="w-44">操作人</th><th class="w-20">类型</th><th>内容</th></tr></thead>
           <tbody>
-            <template v-for="e in items" :key="e.id">
-              <tr class="border-t border-gray-100 dark:border-dark-700" data-testid="dispatch-audit-row">
-                <td class="whitespace-nowrap px-3 py-2 text-xs">{{ fullTime(e.created_at) }}</td>
-                <td class="px-3 py-2 text-xs">{{ e.operator || '系统' }}</td>
-                <td class="px-3 py-2 text-xs">{{ TARGETS[e.target_type] ?? e.target_type }}</td>
-                <td class="px-3 py-2">{{ e.summary }}</td>
-                <td class="px-3 py-2 text-right"><button v-if="e.before || e.after" type="button" class="text-xs text-primary-700" @click="open[e.id] = !open[e.id]">{{ open[e.id] ? '收起' : '详情' }}</button></td>
-              </tr>
-              <tr v-if="open[e.id]"><td colspan="5" class="bg-gray-50 px-3 py-2 dark:bg-dark-900">
-                <div class="grid gap-3 md:grid-cols-2">
-                  <div><div class="mb-1 text-xs text-gray-500">改前</div><pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs">{{ pretty(e.before) }}</pre></div>
-                  <div><div class="mb-1 text-xs text-gray-500">改后</div><pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs">{{ pretty(e.after) }}</pre></div>
-                </div>
-              </td></tr>
-            </template>
-            <tr v-if="!items.length"><td colspan="5" class="py-16 text-center text-sm text-gray-400">没有记录</td></tr>
+            <tr v-for="x in list" :key="x.id">
+              <td class="whitespace-nowrap text-sm tabular-nums text-gray-500">{{ dt(x.created_at) }}</td>
+              <td class="whitespace-nowrap">{{ x.operator || '系统' }}</td>
+              <td><span class="badge" :class="KIND_CLASS[x.target_type]">{{ KIND_NAME[x.target_type] }}</span></td>
+              <td class="text-sm">{{ x.summary }}</td>
+            </tr>
+            <tr v-if="!list.length"><td colspan="4" class="py-14 text-center text-sm text-gray-400">{{ error || '没有记录' }}</td></tr>
           </tbody>
         </table>
-        <div v-if="total > 50" class="flex items-center justify-center gap-3 p-3 text-sm">
-          <button type="button" class="btn btn-secondary btn-sm" :disabled="page <= 1" @click="page--; load()">上一页</button>
-          第 {{ page }} / {{ Math.ceil(total / 50) }} 页
-          <button type="button" class="btn btn-secondary btn-sm" :disabled="page * 50 >= total" @click="page++; load()">下一页</button>
-        </div>
-      </div>
-    </div>
+      </template>
+      <template #pagination>
+        <Pagination v-if="total > pageSize" :total="total" :page="page" :page-size="pageSize" @update:page="page = $event" @update:page-size="pageSize = $event; page = 1" />
+      </template>
+    </TablePageLayout>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import { dispatchApi, type AuditEntry } from '../api'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
-import PSelect from '../shared/PSelect.vue'
-import { fullTime } from '../shared/format'
+import { extractApiErrorMessage } from '@/utils/apiError'
+import { dispatchApi, type AuditEntry } from '../api'
+import { dt } from '../shared/format'
 
-const TARGETS: Record<string, string> = { config: '调度设置', dimension: '维度', item: '检测项', plan: '检测计划', run: '手动检测', account: '立即体检', diagnosis: '重新诊断', event: '待处理', adjustment: '调度调整' }
-const q = reactive({ target_type: '', q: '' })
-const page = ref(1)
-const items = ref<AuditEntry[]>([])
+const KINDS = [{ k: '', n: '全部' }, { k: 'weight', n: '权重' }, { k: 'detect', n: '检测' }, { k: 'config', n: '配置' }]
+const KIND_NAME: Record<string, string> = { weight: '权重', detect: '检测', config: '配置' }
+const KIND_CLASS: Record<string, string> = { weight: 'badge-primary', detect: 'badge-success', config: 'badge-gray' }
+
+const list = ref<AuditEntry[]>([])
 const total = ref(0)
-const open = reactive<Record<number, boolean>>({})
-const pretty = (v: unknown) => (v == null ? '—' : JSON.stringify(v, null, 2))
+const counts = ref<Record<string, number>>({})
+const error = ref('')
+const kind = ref('')
+const kw = ref('')
+const q = ref('')
+const page = ref(1)
+const pageSize = ref(50)
+const total0 = computed(() => Object.values(counts.value).reduce((s, n) => s + n, 0))
 
 async function load() {
-  const r = await dispatchApi.audit({ ...q, page: page.value, page_size: 50 })
-  items.value = r.items ?? []
-  total.value = r.total
+  try {
+    const r = await dispatchApi.audit({ kind: kind.value, q: q.value, page: page.value, page_size: pageSize.value })
+    list.value = r.list
+    total.value = r.total
+    counts.value = r.counts ?? {}
+    error.value = ''
+  } catch (e) {
+    error.value = extractApiErrorMessage(e)
+  }
 }
-watch(() => q.target_type, () => { page.value = 1; void load() }, { immediate: true })
 let timer: ReturnType<typeof setTimeout> | undefined
-function search() {
+watch(kw, (v) => {
   clearTimeout(timer)
-  timer = setTimeout(() => { page.value = 1; void load() }, 300)
-}
+  timer = setTimeout(() => {
+    q.value = v.trim()
+    page.value = 1
+  }, 300)
+})
+watch([kind, q, page, pageSize], load, { immediate: true })
 </script>
