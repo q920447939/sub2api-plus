@@ -100,7 +100,7 @@ func lastSeenQuery(db *sql.DB) func(ctx context.Context) map[int64]time.Time {
 			log.Printf("[plus.dispatch] last seen: %v", err)
 			return out
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var (
 				id int64

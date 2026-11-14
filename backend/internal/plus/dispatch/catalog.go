@@ -43,7 +43,8 @@ func (a *CatAccount) Supports(model string) bool {
 		return service.PlusAccountSupportsModel(a.Platform, a.Type, a.creds, a.extra, model)
 	}
 	if v, ok := a.memo.Load(model); ok {
-		return v.(bool)
+		b, _ := v.(bool)
+		return b
 	}
 	v := service.PlusAccountSupportsModel(a.Platform, a.Type, a.creds, a.extra, model)
 	a.memo.Store(model, v)
@@ -151,7 +152,7 @@ func (s SQLCatalog) LoadCatalog(ctx context.Context) (*Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var (
 			a           CatAccount
@@ -198,7 +199,7 @@ func (s SQLCatalog) LoadCatalog(ctx context.Context) (*Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer grows.Close()
+	defer func() { _ = grows.Close() }()
 	for grows.Next() {
 		var g CatGroup
 		if err := grows.Scan(&g.ID, &g.Name, &g.Platform); err != nil {

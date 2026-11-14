@@ -241,7 +241,7 @@ func (t SQLTraffic) Aggregate(ctx context.Context, from, to time.Time, hourly bo
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var (
 			b time.Time
@@ -309,7 +309,7 @@ func (t SQLTraffic) SaveHourly(ctx context.Context, from, to time.Time, data map
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	for k, m := range data {
 		for b, a := range m {
 			var p90, p50 any
@@ -341,7 +341,7 @@ func (t SQLTraffic) LoadHourly(ctx context.Context, from time.Time, groupID int6
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[TKey]map[int64]Agg{}
 	for rows.Next() {
 		var (

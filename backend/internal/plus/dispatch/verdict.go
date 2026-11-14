@@ -56,7 +56,8 @@ func (d *Detection) Verdict(item Item, a *CatAccount, model string) *Verdict {
 	}
 	k := runKeyOf(item.ID, a.CredKey, model)
 	if v, ok := d.memo.Load(k); ok {
-		return v.(*Verdict)
+		x, _ := v.(*Verdict)
+		return x
 	}
 	var v *Verdict
 	rs := d.Runs(item.ID, a, model)

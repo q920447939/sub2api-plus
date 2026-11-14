@@ -143,7 +143,7 @@ func (s *GeminiMessagesCompatService) listSchedulableAccountsOnce(ctx context.Co
 // ---------- Claude legacy 粘性：账号在不在分组，拿不到模型，只认整个分组暂停 ----------
 
 func (s *GatewayService) isAccountInGroup(account *Account, groupID *int64) bool {
-	return s.isAccountInGroupUpstream(account, groupID) && !plusDispatchPaused(nil, groupID, account.ID)
+	return s.isAccountInGroupUpstream(account, groupID) && !plusDispatchPaused(context.Background(), groupID, account.ID)
 }
 
 // ---------- 粘性会话：绑定的账号在这个模型上被暂停时当作没绑定，走正常选号（名单层按模型处理，包括「只剩它、保留」），

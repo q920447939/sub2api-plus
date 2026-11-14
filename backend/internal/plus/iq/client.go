@@ -233,9 +233,9 @@ func readSSE(r io.Reader, fn func(event string, data []byte) error) error {
 			event = strings.TrimSpace(string(line[6:]))
 		case bytes.HasPrefix(line, []byte("data:")):
 			if data.Len() > 0 {
-				data.WriteByte('\n')
+				_ = data.WriteByte('\n')
 			}
-			data.Write(bytes.TrimPrefix(line[5:], []byte(" ")))
+			_, _ = data.Write(bytes.TrimPrefix(line[5:], []byte(" ")))
 		}
 	}
 	if err := sc.Err(); err != nil {

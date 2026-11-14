@@ -44,6 +44,7 @@ func (anthropicCodec) path(string) string { return "/v1/messages" }
 func (anthropicCodec) headers(k string) map[string]string {
 	return map[string]string{"x-api-key": k, "anthropic-version": "2023-06-01"}
 }
+
 // variant 0：adaptive 思考 + output_config.effort（新模型如 claude-opus-5-5 只接受这种）；
 // variant 1：旧写法 enabled + budget_tokens（不认识 adaptive 的老模型）。思考关闭时两者相同。
 func (anthropicCodec) capVariants() int { return 2 }
@@ -108,8 +109,8 @@ func (anthropicCodec) onEvent(_ string, data []byte, acc *accum) error {
 			acc.in = ev.Message.Usage.InputTokens
 		}
 	case "content_block_delta":
-		acc.text.WriteString(ev.Delta.Text)
-		acc.thinking.WriteString(ev.Delta.Thinking)
+		_, _ = acc.text.WriteString(ev.Delta.Text)
+		_, _ = acc.thinking.WriteString(ev.Delta.Thinking)
 	case "message_delta":
 		if ev.Usage.OutputTokens != nil {
 			acc.out = ev.Usage.OutputTokens
@@ -129,8 +130,8 @@ func (anthropicCodec) parseJSON(raw []byte, acc *accum) error {
 		return fmt.Errorf("解析响应失败：%w", err)
 	}
 	for _, c := range ev.Content {
-		acc.text.WriteString(c.Text)
-		acc.thinking.WriteString(c.Thinking)
+		_, _ = acc.text.WriteString(c.Text)
+		_, _ = acc.thinking.WriteString(c.Thinking)
 	}
 	acc.in, acc.out = ev.Usage.InputTokens, ev.Usage.OutputTokens
 	return nil
@@ -188,8 +189,8 @@ func (c chatCodec) onEvent(_ string, data []byte, acc *accum) error {
 		return nil
 	}
 	for _, x := range ch.Choices {
-		acc.text.WriteString(x.Delta.Content)
-		acc.thinking.WriteString(x.Delta.ReasoningContent)
+		_, _ = acc.text.WriteString(x.Delta.Content)
+		_, _ = acc.thinking.WriteString(x.Delta.ReasoningContent)
 	}
 	c.common(ch, acc)
 	return nil
@@ -201,8 +202,8 @@ func (c chatCodec) parseJSON(raw []byte, acc *accum) error {
 		return fmt.Errorf("解析响应失败：%w", err)
 	}
 	for _, x := range ch.Choices {
-		acc.text.WriteString(x.Message.Content)
-		acc.thinking.WriteString(x.Message.ReasoningContent)
+		_, _ = acc.text.WriteString(x.Message.Content)
+		_, _ = acc.thinking.WriteString(x.Message.ReasoningContent)
 	}
 	c.common(ch, acc)
 	return nil
@@ -278,9 +279,9 @@ func (r responsesCodec) onEvent(event string, data []byte, acc *accum) error {
 	}
 	switch ev.Type {
 	case "response.output_text.delta":
-		acc.text.WriteString(ev.Delta)
+		_, _ = acc.text.WriteString(ev.Delta)
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
-		acc.thinking.WriteString(ev.Delta)
+		_, _ = acc.thinking.WriteString(ev.Delta)
 	case "response.completed", "response.incomplete":
 		if ev.Response != nil && ev.Response.Usage != nil {
 			acc.in, acc.out = ev.Response.Usage.InputTokens, ev.Response.Usage.OutputTokens
@@ -311,7 +312,7 @@ func (responsesCodec) collect(o *responsesObj, acc *accum) {
 		}
 		for _, c := range item.Content {
 			if c.Type == "output_text" {
-				acc.text.WriteString(c.Text)
+				_, _ = acc.text.WriteString(c.Text)
 			}
 		}
 	}
@@ -375,9 +376,9 @@ func (geminiCodec) apply(ch geminiChunk, acc *accum) {
 	for _, c := range ch.Candidates {
 		for _, p := range c.Content.Parts {
 			if p.Thought {
-				acc.thinking.WriteString(p.Text)
+				_, _ = acc.thinking.WriteString(p.Text)
 			} else {
-				acc.text.WriteString(p.Text)
+				_, _ = acc.text.WriteString(p.Text)
 			}
 		}
 	}

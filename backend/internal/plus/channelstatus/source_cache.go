@@ -60,7 +60,8 @@ func (c *CachedSource) Fetch(ctx context.Context, groupIDs []int64, start, end t
 	if err != nil {
 		return nil, err
 	}
-	return v.(map[int64]map[int64]Signal), nil
+	m, _ := v.(map[int64]map[int64]Signal)
+	return m, nil
 }
 
 // Invalidate 清空缓存（配置变更后调用，使忽略分类等立即生效）

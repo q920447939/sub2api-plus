@@ -262,7 +262,7 @@ func (s *Service) SheetSave(ctx context.Context, req SheetReq, actor Actor) (*Sh
 		for _, g := range sh.Groups {
 			from := stateOf(exactRule(st.rules, req.AccountID, g.GroupID, m))
 			to := stateOf(exactRule(sh.next, req.AccountID, g.GroupID, m))
-			if sameState(from, to) && !(from != nil && to != nil && from.Hard != to.Hard) {
+			if sameState(from, to) && (from == nil || to == nil || from.Hard == to.Hard) {
 				continue
 			}
 			rec.Groups = append(rec.Groups, RecordGroup{GroupID: g.GroupID, From: from, To: to})
