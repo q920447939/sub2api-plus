@@ -81,7 +81,7 @@ func (r *Repository) ClaimDuePlans(ctx context.Context, now time.Time, limit int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Plan
 	for rows.Next() {
 		p, err := scanPlan(rows)
@@ -104,7 +104,7 @@ func (r *Repository) StartQueued(ctx context.Context, limit int) ([]Run, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Run
 	for rows.Next() {
 		run, err := scanRun(rows, false)
@@ -198,7 +198,7 @@ func (r *Repository) ListRuns(ctx context.Context, f RunFilter) ([]Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Run
 	for rows.Next() {
 		run, err := scanRun(rows, false)
@@ -217,7 +217,7 @@ func (r *Repository) CountOutcomes(ctx context.Context, f RunFilter) (map[string
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[string]int{}
 	for rows.Next() {
 		var (
@@ -241,7 +241,7 @@ func (r *Repository) RecentRuns(ctx context.Context, perKey int) ([]Run, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Run
 	for rows.Next() {
 		run, err := scanRun(rows, false)
@@ -260,7 +260,7 @@ func (r *Repository) RunStats(ctx context.Context, since time.Time) ([]RunStat, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []RunStat
 	for rows.Next() {
 		var s RunStat
@@ -279,7 +279,7 @@ func (r *Repository) LastRunAt(ctx context.Context) (map[string]time.Time, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[string]time.Time{}
 	for rows.Next() {
 		var (

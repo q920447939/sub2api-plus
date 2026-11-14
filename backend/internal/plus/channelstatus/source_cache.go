@@ -83,9 +83,9 @@ func cacheKey(groupIDs []int64, start, end time.Time, bucket time.Duration) stri
 	ids := append([]int64(nil), groupIDs...)
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	var b strings.Builder
-	fmt.Fprintf(&b, "%d|%d|%d|", start.Unix(), end.Unix(), int64(bucket))
+	_, _ = fmt.Fprintf(&b, "%d|%d|%d|", start.Unix(), end.Unix(), int64(bucket))
 	for _, id := range ids {
-		fmt.Fprintf(&b, "%d,", id)
+		_, _ = fmt.Fprintf(&b, "%d,", id)
 	}
 	return b.String()
 }

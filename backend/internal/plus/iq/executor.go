@@ -136,10 +136,10 @@ func (e *Executor) findGroup(ctx context.Context, id int64) (GroupInfo, bool) {
 func rawExcerpt(c Completion) string {
 	var b strings.Builder
 	if c.Thinking != "" {
-		b.WriteString("【思考】\n" + truncate(c.Thinking, 1500) + "\n\n")
+		_, _ = b.WriteString("【思考】\n" + truncate(c.Thinking, 1500) + "\n\n")
 	}
 	if c.Text != "" {
-		b.WriteString("【正文】\n" + truncate(c.Text, 3000))
+		_, _ = b.WriteString("【正文】\n" + truncate(c.Text, 3000))
 	}
 	return b.String()
 }

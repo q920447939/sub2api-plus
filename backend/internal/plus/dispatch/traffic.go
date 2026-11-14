@@ -266,7 +266,7 @@ func (t SQLTraffic) Aggregate(ctx context.Context, from, to time.Time, hourly bo
 	if err != nil {
 		return nil, err
 	}
-	defer erows.Close()
+	defer func() { _ = erows.Close() }()
 	for erows.Next() {
 		var (
 			b  time.Time

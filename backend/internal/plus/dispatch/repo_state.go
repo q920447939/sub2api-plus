@@ -20,7 +20,7 @@ func (r *Repository) ListIgnores(ctx context.Context) ([]Ignore, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Ignore
 	for rows.Next() {
 		var ig Ignore
@@ -57,7 +57,7 @@ func (r *Repository) ListRules(ctx context.Context) ([]Rule, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Rule
 	for rows.Next() {
 		var (
@@ -185,7 +185,7 @@ func (r *Repository) ListRecords(ctx context.Context, accountID int64, limit int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Record
 	for rows.Next() {
 		x, err := scanRecord(rows)
@@ -254,12 +254,12 @@ func (r *Repository) ListAudit(ctx context.Context, f AuditFilter) ([]AuditEntry
 			n int64
 		)
 		if err := crow.Scan(&k, &n); err != nil {
-			crow.Close()
+			_ = crow.Close()
 			return nil, 0, nil, err
 		}
 		counts[k] = n
 	}
-	crow.Close()
+	_ = crow.Close()
 	if f.TargetType != "" {
 		add("("+auditKindSQL+") = $%d", f.TargetType)
 	}
@@ -280,7 +280,7 @@ func (r *Repository) ListAudit(ctx context.Context, f AuditFilter) ([]AuditEntry
 	if err != nil {
 		return nil, 0, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []AuditEntry
 	for rows.Next() {
 		var (

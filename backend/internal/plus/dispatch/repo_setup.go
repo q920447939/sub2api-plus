@@ -62,7 +62,7 @@ func (r *Repository) ListItems(ctx context.Context) ([]Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Item
 	for rows.Next() {
 		var it Item
@@ -101,7 +101,7 @@ func (r *Repository) ListPlans(ctx context.Context) ([]Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Plan
 	for rows.Next() {
 		p, err := scanPlan(rows)
