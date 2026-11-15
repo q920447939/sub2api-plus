@@ -423,7 +423,7 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'customPage.title',
     }
   },
-  // [plus] launcher for new_tab custom menu items; resolves plus modules then opens the target
+  // [plus] launcher for plus:* custom menu items (embed and new_tab); resolves server-side then opens the target
   {
     path: '/launch/:id',
     name: 'PlusLaunch',

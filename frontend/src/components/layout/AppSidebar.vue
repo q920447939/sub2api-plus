@@ -820,12 +820,14 @@ function navItemForCustomMenu(cm: CustomMenuItem): NavItem {
     icon: null,
     iconSvg: cm.icon_svg,
   }
+  // [plus] plus:key_launch needs the server-side launcher to resolve credentials first, in
+  // both open modes. Linking embed items to /custom/:id would load CustomPageView only for it
+  // to redirect here.
+  if (cm.url?.startsWith('plus:')) {
+    return { ...base, path: `/launch/${cm.id}`, openInNewTab: cm.open_mode === 'new_tab' }
+  }
   if (cm.open_mode === 'new_tab') {
-    // [plus] plus:key_launch needs the server-side launcher to resolve credentials first;
     // a regular URL can go straight to the target — no need to round-trip through /launch/:id.
-    if (cm.url?.startsWith('plus:')) {
-      return { ...base, path: `/launch/${cm.id}`, openInNewTab: true }
-    }
     return { ...base, path: cm.url, openInNewTab: true }
   }
   return { ...base, path: `/custom/${cm.id}` }

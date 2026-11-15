@@ -102,7 +102,8 @@ git push origin --delete plus/v0.2.15-plus.1      # 删远端（不会触发 CI�
 | 文件 | 改动 |
 |---|---|
 | `types/index.ts` | `CustomMenuItem` 加三个可选字段；新增 `KeyLaunchConfig` |
-| `components/layout/AppSidebar.vue` | 新增 `navItemForCustomMenu()`；渠道状态：用户端 `/channel-status` 一项、管理端「渠道管理」下「渠道状态设置」一项（上游 `/monitor` 未改，靠关闭上游 `channel_monitor_enabled` 隐藏）；智商检测：用户端「模型画廊」`/model-gallery` 一项（跟随 `iqNavFlag()`）、管理端「智商检测」分组一项（`iqAdminNav`）；管理端「上游调度台」分组一项（`dispatchAdminNav`），均带 `[plus]` 标记 |
+| `components/layout/AppSidebar.vue` | 新增 `navItemForCustomMenu()`（`plus:` 菜单不论打开方式都直达 `/launch/:id`）；渠道状态：用户端 `/channel-status` 一项、管理端「渠道管理」下「渠道状态设置」一项（上游 `/monitor` 未改，靠关闭上游 `channel_monitor_enabled` 隐藏）；智商检测：用户端「模型画廊」`/model-gallery` 一项（跟随 `iqNavFlag()`）、管理端「智商检测」分组一项（`iqAdminNav`）；管理端「上游调度台」分组一项（`dispatchAdminNav`），均带 `[plus]` 标记 |
+| `App.vue` | 挂载 `<CheckinPopup>` 和 `<PlusEmbedHost>`（plus 菜单嵌入时的常驻 iframe 层，切换菜单不重载），各一个 import + 一行模板 |
 | `utils/embedded-url.ts` | `buildEmbeddedUrl` 加第 6 个参数 `passParams` |
 | `views/admin/SettingsView.vue` | 插入 `<PlusMenuSettings>` |
 | `views/user/CustomPageView.vue` | `plus:` URL 重定向到 `/launch/:id` |

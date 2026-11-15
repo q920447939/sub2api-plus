@@ -7,6 +7,7 @@ import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import CheckinPopup from '@/plus/checkin/CheckinPopup.vue' // [plus]
+import PlusEmbedHost from '@/plus/embed/PlusEmbedHost.vue' // [plus]
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 import { updateFavicon } from '@/utils/branding'
@@ -168,5 +169,6 @@ onMounted(async () => {
   <Toast />
   <AnnouncementPopup />
   <CheckinPopup /> <!-- [plus] -->
+  <PlusEmbedHost /> <!-- [plus] persistent iframes for embedded plus apps -->
   <AdminComplianceDialog />
 </template>
