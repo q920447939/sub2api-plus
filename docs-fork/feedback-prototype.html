@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>反馈中心 · UI 原型</title>
+<style>
+:root{--p:#0ea5e9;--pd:#0284c7;--bg:#f5f7fa;--card:#fff;--bd:#e5e7eb;--tx:#1f2937;--mu:#6b7280;--ok:#10b981;--warn:#f59e0b;--err:#ef4444;--vi:#8b5cf6}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--tx);background:var(--bg)}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,textarea,select{font:inherit;color:inherit;border:1px solid var(--bd);border-radius:8px;padding:8px 10px;width:100%;background:#fff;outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--p)}
+textarea{resize:vertical}
+
+/* 原型切换条 */
+.proto{position:sticky;top:0;z-index:50;background:#111827;color:#9ca3af;display:flex;gap:4px;padding:6px 12px;align-items:center;font-size:12px;flex-wrap:wrap}
+.proto b{color:#fff;margin:0 8px 0 12px}
+.proto button{padding:4px 10px;border-radius:6px;color:#d1d5db}
+.proto button.on{background:var(--p);color:#fff}
+
+.app{display:flex;min-height:calc(100vh - 36px)}
+.side{width:210px;background:#fff;border-right:1px solid var(--bd);padding:16px 10px;flex-shrink:0}
+.logo{font-weight:700;font-size:16px;padding:4px 10px 16px}
+.nav{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:var(--mu);margin-bottom:2px;cursor:pointer}
+.nav:hover{background:var(--bg)}
+.nav.on{background:#e0f2fe;color:var(--pd);font-weight:600}
+.nav .dot{width:7px;height:7px;border-radius:50%;background:var(--err);margin-left:auto}
+.nav .cnt{margin-left:auto;background:var(--err);color:#fff;font-size:11px;border-radius:9px;padding:0 6px;line-height:17px}
+.main{flex:1;padding:24px 28px;min-width:0}
+.h1{font-size:20px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+.h1 .sp{flex:1}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:20px;margin-bottom:16px}
+.btn{padding:8px 16px;border-radius:8px;background:var(--p);color:#fff;font-weight:500}
+.btn:hover{background:var(--pd)}
+.btn.g{background:#fff;color:var(--tx);border:1px solid var(--bd)}
+.btn.g:hover{background:var(--bg)}
+.btn.sm{padding:4px 10px;font-size:13px}
+.muted{color:var(--mu)}
+.row{display:flex;gap:12px;align-items:center}
+.lbl{font-weight:600;margin:18px 0 8px;font-size:13px}
+.lbl i{color:var(--err);font-style:normal}
+
+/* 公告 */
+.notice{background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:14px 18px;margin-bottom:16px}
+.notice .md p{margin:4px 0}
+.md h3{font-size:15px;margin:2px 0 6px}
+.md ul{padding-left:20px}
+.md a{color:var(--pd)}
+.md code{background:#e5e7eb;border-radius:4px;padding:0 4px;font-size:12px}
+
+/* 类型切换 */
+.seg{display:inline-flex;background:var(--bg);border-radius:10px;padding:4px}
+.seg button{padding:8px 26px;border-radius:8px;color:var(--mu);font-weight:500}
+.seg button.on{background:#fff;color:var(--tx);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+
+/* 场景卡片 */
+.scs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.sc{border:1.5px solid var(--bd);border-radius:10px;padding:12px;text-align:center;cursor:pointer;background:#fff}
+.sc:hover{border-color:#7dd3fc}
+.sc.on{border-color:var(--p);background:#f0f9ff}
+.sc .ic{font-size:22px}
+.sc .t{font-weight:500;margin-top:2px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.up{display:flex;gap:10px}
+.up div{width:84px;height:84px;border:1.5px dashed var(--bd);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--mu);font-size:24px}
+
+/* 标签 */
+.tag{display:inline-block;padding:1px 8px;border-radius:6px;font-size:12px;line-height:20px;white-space:nowrap}
+.t-issue{background:#fee2e2;color:#b91c1c}
+.t-sug{background:#ede9fe;color:#6d28d9}
+.s-pend{background:#fef3c7;color:#b45309}
+.s-ask{background:#ffedd5;color:#c2410c}
+.s-done{background:#d1fae5;color:#047857}
+.s-adopt{background:#e0e7ff;color:#4338ca}
+.s-no{background:#f3f4f6;color:#6b7280}
+.lv-1{background:#fee2e2;color:#b91c1c}.lv-2{background:#fef3c7;color:#b45309}.lv-3{background:#e0f2fe;color:#0369a1}.lv-4{background:#f3f4f6;color:#6b7280}
+.chip{display:inline-block;padding:1px 8px;border-radius:6px;font-size:12px;background:var(--bg);border:1px solid var(--bd);margin-right:4px}
+
+/* 表格 */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-weight:500;color:var(--mu);font-size:13px;padding:10px 12px;border-bottom:1px solid var(--bd)}
+td{padding:12px;border-bottom:1px solid #f3f4f6;vertical-align:middle}
+tr.clk{cursor:pointer}
+tr.clk:hover td{background:#fafafa}
+.ell{max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.unread{width:7px;height:7px;border-radius:50%;background:var(--err);display:inline-block;margin-right:6px}
+.filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.filters select,.filters input{width:auto;padding:6px 10px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--bd);margin-bottom:14px}
+.tabs button{padding:8px 14px;color:var(--mu);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.on{color:var(--pd);border-color:var(--p);font-weight:600}
+.tabs .n{font-size:12px;margin-left:4px}
+
+/* 时间线 */
+.tl{position:relative;padding-left:4px}
+.msg{display:flex;gap:12px;margin-bottom:18px}
+.av{width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:#fff}
+.av.u{background:#64748b}.av.a{background:var(--p)}
+.bub{flex:1;min-width:0}
+.bub .who{font-size:13px;color:var(--mu);margin-bottom:4px}
+.bub .who b{color:var(--tx);margin-right:8px}
+.bub .body{background:var(--bg);border-radius:0 12px 12px 12px;padding:10px 14px;display:inline-block;max-width:100%}
+.bub.ask .body{background:#fff7ed;border:1px solid #fed7aa}
+.bub.note .body{background:#fefce8;border:1px dashed #facc15}
+.bub .kv{font-size:13px;margin-top:8px;display:grid;grid-template-columns:auto 1fr;gap:2px 12px}
+.bub .kv span:nth-child(odd){color:var(--mu)}
+.imgs{display:flex;gap:6px;margin-top:8px}
+.imgs div{width:72px;height:54px;border-radius:6px;background:linear-gradient(135deg,#cbd5e1,#e2e8f0)}
+.ev{text-align:center;font-size:12px;color:var(--mu);margin:-4px 0 18px}
+.ev span{background:var(--bg);padding:2px 10px;border-radius:10px}
+.ev.pts span{background:#ede9fe;color:#6d28d9}
+.reply{border-top:1px solid var(--bd);padding-top:14px}
+.hl{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 12px;margin-bottom:10px;color:#c2410c;font-size:13px}
+.closed{background:var(--bg);border-radius:10px;padding:14px;text-align:center}
+
+/* 管理端详情 */
+.wb{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+.panel h4{font-size:13px;color:var(--mu);font-weight:500;margin-bottom:8px}
+.panel+.panel{margin-top:18px;padding-top:18px;border-top:1px solid #f3f4f6}
+.kvs{display:grid;grid-template-columns:80px 1fr;gap:4px 8px;font-size:13px}
+.kvs span:nth-child(odd){color:var(--mu)}
+.err{font-size:12px;padding:6px 8px;border-radius:6px;background:#fef2f2;margin-bottom:4px;display:flex;gap:8px}
+.err b{color:var(--err)}
+.acts{display:flex;gap:8px;margin-bottom:10px}
+.acts button{padding:5px 12px;border-radius:6px;color:var(--mu)}
+.acts button.on{background:var(--bg);color:var(--tx);font-weight:600}
+.meta{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.meta select{width:auto;padding:4px 8px;font-size:13px}
+
+/* 弹窗 */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:100}
+.mask.on{display:flex}
+.modal{background:#fff;border-radius:14px;width:440px;padding:22px}
+.modal h3{font-size:16px;margin-bottom:14px}
+.opts{display:flex;gap:8px}
+.opts button{flex:1;border:1.5px solid var(--bd);border-radius:8px;padding:8px}
+.opts button.on{border-color:var(--p);background:#f0f9ff;color:var(--pd);font-weight:600}
+.pts{display:flex;align-items:center;gap:10px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:12px;margin-top:16px}
+.step{display:flex;align-items:center;border:1px solid var(--bd);border-radius:8px;background:#fff;overflow:hidden}
+.step button{width:32px;height:32px;font-size:16px}
+.step input{width:70px;border:none;text-align:center;border-left:1px solid var(--bd);border-right:1px solid var(--bd);border-radius:0;padding:5px}
+.sw{width:38px;height:22px;border-radius:11px;background:#d1d5db;position:relative;cursor:pointer;flex-shrink:0}
+.sw::after{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:2px;left:2px;transition:.15s}
+.sw.on{background:var(--vi)}
+.sw.on::after{left:18px}
+.sw.b.on{background:var(--p)}
+
+/* 看板 */
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+.kpi{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:14px 16px}
+.kpi .v{font-size:24px;font-weight:700}
+.kpi .k{color:var(--mu);font-size:13px}
+.dash{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.dash .card{margin:0}
+.ct{font-weight:600;margin-bottom:12px}
+.bars .b{display:grid;grid-template-columns:100px 1fr 40px;gap:8px;align-items:center;font-size:13px;margin-bottom:8px}
+.bars .tr{height:14px;background:var(--bg);border-radius:4px;display:flex;overflow:hidden}
+.bars .tr i{display:block;height:100%}
+.leg{display:flex;gap:14px;font-size:12px;color:var(--mu);margin-bottom:10px}
+.leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.hm{display:grid;grid-template-columns:100px repeat(4,1fr);gap:3px;font-size:12px}
+.hm div{padding:6px;text-align:center;border-radius:4px}
+.hm .h{color:var(--mu)}
+.hm .r{text-align:left}
+.spark{display:flex;align-items:flex-end;gap:4px;height:120px;padding-top:10px}
+.spark div{flex:1;display:flex;flex-direction:column-reverse;gap:1px}
+.spark i{display:block;border-radius:2px}
+
+/* 设置 */
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f3f4f6}
+.set-row:last-child{border:none}
+.set-row input{width:120px}
+.edit2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.edit2 textarea{height:220px;font-family:ui-monospace,monospace;font-size:13px}
+.pv{border:1px solid var(--bd);border-radius:8px;padding:12px;height:220px;overflow:auto;background:#f0f9ff}
+.drag{color:#cbd5e1;cursor:grab}
+.page{display:none}
+.page.on{display:block}
+</style>
+</head>
+<body>
+
+<div class="proto">
+  <b>用户端</b>
+  <button data-go="u-new" class="on">提交反馈</button>
+  <button data-go="u-list">我的反馈</button>
+  <button data-go="u-detail">反馈详情</button>
+  <b>管理端</b>
+  <button data-go="a-list">反馈管理</button>
+  <button data-go="a-detail">处理详情</button>
+  <button data-go="a-dash">分析看板</button>
+  <button data-go="a-set">反馈设置</button>
+</div>
+
+<!-- ================= 用户端 ================= -->
+<div class="app" id="app-user">
+  <aside class="side">
+    <div class="logo">Sub2API</div>
+    <div class="nav">📊 仪表盘</div>
+    <div class="nav">🔑 API 密钥</div>
+    <div class="nav">📈 使用记录</div>
+    <div class="nav">💳 充值</div>
+    <div class="nav">🎁 积分乐园</div>
+    <div class="nav" data-go="u-list" id="nav-u-fb">💬 我的反馈<span class="dot"></span></div>
+  </aside>
+  <main class="main">
+
+    <!-- 提交反馈 -->
+    <section class="page on" id="u-new">
+      <div class="h1">提交反馈</div>
+      <div class="notice"><div class="md" data-notice></div></div>
+      <div class="card" style="max-width:820px">
+        <div class="lbl" style="margin-top:0">类型 <i>*</i></div>
+        <div class="seg" id="typeSeg">
+          <button class="on" data-type="issue">🐞 问题</button>
+          <button data-type="sug">💡 建议</button>
+        </div>
+
+        <div class="lbl">场景 <i>*</i></div>
+        <div class="scs" id="scs"></div>
+
+        <div class="lbl">描述 <i>*</i></div>
+        <textarea rows="5" id="desc" placeholder="发生了什么？怎么操作出现的？"></textarea>
+
+        <div id="extra-issue">
+          <div class="grid2" style="margin-top:12px">
+            <select><option>使用的 API Key</option><option>my-claude-key</option><option>cursor</option></select>
+            <input placeholder="模型，如 claude-sonnet-4-5">
+            <input placeholder="大概时间，如 今天 14:30">
+            <input placeholder="错误提示原文">
+          </div>
+        </div>
+        <div id="extra-sug" style="display:none">
+          <div class="grid2" style="margin-top:12px">
+            <textarea rows="3" placeholder="希望怎么改"></textarea>
+            <textarea rows="3" placeholder="解决什么痛点"></textarea>
+          </div>
+        </div>
+
+        <div class="lbl">截图 <span class="muted" style="font-weight:400">· 最多 3 张，请勿包含 API Key</span></div>
+        <div class="up"><div>+</div></div>
+
+        <div class="row" style="margin-top:18px">
+          <label class="row muted" style="gap:6px;cursor:pointer"><input type="checkbox" style="width:auto"> 关联上一条反馈</label>
+          <span style="flex:1"></span>
+          <button class="btn" data-go="u-list">提交</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 我的反馈 -->
+    <section class="page" id="u-list">
+      <div class="h1">我的反馈<span class="sp"></span><button class="btn" data-go="u-new">+ 提交反馈</button></div>
+      <div class="notice"><div class="md" data-notice></div></div>
+      <div class="card" style="padding:8px 20px 4px">
+        <div class="tabs">
+          <button class="on">全部</button><button>进行中</button><button>已结束</button>
+        </div>
+        <table>
+          <thead><tr><th>类型</th><th>场景</th><th>内容</th><th>状态</th><th>更新时间</th></tr></thead>
+          <tbody>
+            <tr class="clk" data-go="u-detail"><td><span class="tag t-issue">问题</span></td><td>调用报错</td><td class="ell"><span class="unread"></span>Claude Code 连续请求时偶发 529，重试几次才成功</td><td><span class="tag s-ask">待补充</span></td><td class="muted">10 分钟前</td></tr>
+            <tr class="clk" data-go="u-detail"><td><span class="tag t-sug">建议</span></td><td>充值和扣费</td><td class="ell"><span class="unread"></span>希望支持按月自动续费订阅</td><td><span class="tag s-adopt">已采纳 · +500</span></td><td class="muted">昨天</td></tr>
+            <tr class="clk" data-go="u-detail"><td><span class="tag t-issue">问题</span></td><td>充值和扣费</td><td class="ell">支付宝付款后余额没到账</td><td><span class="tag s-done">已解决</span></td><td class="muted">11-12</td></tr>
+            <tr class="clk" data-go="u-detail"><td><span class="tag t-sug">建议</span></td><td>接入和配置</td><td class="ell">文档里加一个 Cline 的配置示例</td><td><span class="tag s-pend">待处理</span></td><td class="muted">11-10</td></tr>
+            <tr class="clk" data-go="u-detail"><td><span class="tag t-issue">问题</span></td><td>模型效果不对</td><td class="ell">感觉 opus 今天回答质量下降</td><td><span class="tag s-no">不处理</span></td><td class="muted">11-03</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 反馈详情（用户） -->
+    <section class="page" id="u-detail">
+      <div class="h1"><button class="btn g sm" data-go="u-list">←</button>#1024 <span class="tag t-issue">问题</span><span class="tag s-ask">待补充</span></div>
+      <div class="card" style="max-width:820px">
+        <div class="tl">
+          <div class="msg"><div class="av u">我</div><div class="bub"><div class="who"><b>我</b>11-16 14:02 · 调用报错</div>
+            <div class="body">Claude Code 连续请求时偶发 529，重试几次才成功。
+              <div class="kv"><span>Key</span><span>my-claude-key</span><span>模型</span><span>claude-sonnet-4-5</span><span>时间</span><span>今天 13:50 左右</span></div>
+              <div class="imgs"><div></div></div>
+            </div></div></div>
+          <div class="msg"><div class="av a">管</div><div class="bub ask"><div class="who"><b>管理员</b>11-16 15:20</div>
+            <div class="body">方便贴一下 Claude Code 的完整报错信息吗？另外是否开启了并行子任务？</div></div></div>
+          <div class="ev"><span>状态变为 待补充</span></div>
+        </div>
+        <div class="reply">
+          <div class="hl">管理员需要你补充信息</div>
+          <textarea rows="3" placeholder="补充说明…"></textarea>
+          <div class="row" style="margin-top:10px"><button class="btn g sm">🖼 图片</button><span style="flex:1"></span><button class="btn">发送</button></div>
+        </div>
+      </div>
+
+      <div class="card" style="max-width:820px">
+        <div class="muted" style="font-size:12px;margin-bottom:12px">↓ 已结束的建议单</div>
+        <div class="row" style="margin-bottom:14px">#1019 <span class="tag t-sug">建议</span><span class="tag s-adopt">已采纳</span></div>
+        <div class="tl">
+          <div class="msg"><div class="av u">我</div><div class="bub"><div class="who"><b>我</b>11-15 09:12 · 充值和扣费</div><div class="body">希望支持按月自动续费订阅。</div></div></div>
+          <div class="msg"><div class="av a">管</div><div class="bub"><div class="who"><b>管理员</b>11-15 18:40</div><div class="body">好建议，已排进下个版本 👍</div></div></div>
+          <div class="ev"><span>已采纳</span></div>
+          <div class="ev pts"><span>🎁 获得 500 积分</span></div>
+        </div>
+        <div class="closed muted">已结束 · <a href="#" data-go="u-new" style="color:var(--pd)">提一条新反馈并关联</a></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ================= 管理端 ================= -->
+<div class="app" id="app-admin" style="display:none">
+  <aside class="side">
+    <div class="logo">Sub2API <span class="muted" style="font-size:12px;font-weight:400">Admin</span></div>
+    <div class="nav">📊 仪表盘</div>
+    <div class="nav">👥 用户管理</div>
+    <div class="nav">📦 分组管理</div>
+    <div class="nav">📢 公告</div>
+    <div class="nav" data-go="a-list" id="nav-a-list">💬 反馈管理<span class="cnt">6</span></div>
+    <div class="nav" data-go="a-dash" id="nav-a-dash" style="padding-left:34px">分析看板</div>
+    <div class="nav" data-go="a-set" id="nav-a-set" style="padding-left:34px">反馈设置</div>
+  </aside>
+  <main class="main">
+
+    <!-- 反馈列表 -->
+    <section class="page" id="a-list">
+      <div class="h1">反馈管理<span class="sp"></span><button class="btn g sm">导出 CSV</button></div>
+      <div class="card" style="padding:8px 20px 4px">
+        <div class="tabs">
+          <button class="on">待处理<span class="n">6</span></button><button>待补充<span class="n">3</span></button><button>已结束</button><button>全部</button>
+        </div>
+        <div class="filters">
+          <select><option>全部类型</option><option>问题</option><option>建议</option></select>
+          <select><option>全部场景</option><option>接入和配置</option><option>调用报错</option><option>模型效果不对</option><option>速度慢或不稳定</option><option>充值和扣费</option><option>活动和权益</option><option>账号和登录</option><option>其他</option></select>
+          <select><option>严重程度</option><option>严重</option><option>一般</option><option>轻微</option><option>无效</option></select>
+          <select><option>标签</option></select>
+          <input placeholder="用户邮箱 / ID" style="width:180px">
+          <input placeholder="日期范围" style="width:160px">
+        </div>
+        <table>
+          <thead><tr><th style="width:28px"><input type="checkbox" style="width:auto"></th><th>#</th><th>类型</th><th>场景</th><th>内容</th><th>用户</th><th>严重</th><th>最近活动</th></tr></thead>
+          <tbody>
+            <tr class="clk" data-go="a-detail"><td><input type="checkbox" style="width:auto"></td><td class="muted">1024</td><td><span class="tag t-issue">问题</span></td><td>调用报错</td><td class="ell"><span class="unread"></span>Claude Code 连续请求时偶发 529，重试几次才成功</td><td>alice@…</td><td><span class="tag lv-2">一般</span></td><td class="muted">用户补充 · 3 分钟前</td></tr>
+            <tr class="clk" data-go="a-detail"><td><input type="checkbox" style="width:auto"></td><td class="muted">1027</td><td><span class="tag t-issue">问题</span></td><td>充值和扣费</td><td class="ell"><span class="unread"></span>微信支付成功但订单显示未支付</td><td>bob@…</td><td class="muted">—</td><td class="muted">20 分钟前</td></tr>
+            <tr class="clk" data-go="a-detail"><td><input type="checkbox" style="width:auto"></td><td class="muted">1026</td><td><span class="tag t-sug">建议</span></td><td>接入和配置</td><td class="ell">希望 Key 页面直接生成 Codex 的 config.toml</td><td>carol@…</td><td class="muted">—</td><td class="muted">1 小时前</td></tr>
+            <tr class="clk" data-go="a-detail"><td><input type="checkbox" style="width:auto"></td><td class="muted">1025</td><td><span class="tag t-issue">问题</span></td><td>模型效果不对</td><td class="ell">gpt-5 画图分辨率比官方低</td><td>dave@…</td><td class="muted">—</td><td class="muted">2 小时前</td></tr>
+            <tr class="clk" data-go="a-detail"><td><input type="checkbox" style="width:auto"></td><td class="muted">1023</td><td><span class="tag t-sug">建议</span></td><td>活动和权益</td><td class="ell">签到能不能补签</td><td>erin@…</td><td><span class="tag lv-3">轻微</span></td><td class="muted">昨天</td></tr>
+            <tr class="clk" data-go="a-detail"><td><input type="checkbox" style="width:auto"></td><td class="muted">1021</td><td><span class="tag t-issue">问题</span></td><td>速度慢或不稳定</td><td class="ell">晚上 9 点后首字延迟很高</td><td>frank@…</td><td><span class="tag lv-1">严重</span></td><td class="muted">昨天</td></tr>
+          </tbody>
+        </table>
+        <div class="row" style="padding:12px 0;font-size:13px"><span class="muted">已选 0 条</span><button class="btn g sm">定级</button><button class="btn g sm">打标签</button><button class="btn g sm">结案</button></div>
+      </div>
+    </section>
+
+    <!-- 处理详情 -->
+    <section class="page" id="a-detail">
+      <div class="h1"><button class="btn g sm" data-go="a-list">←</button>#1024
+        <select id="aType" style="width:auto;padding:3px 8px;font-size:13px"><option value="issue">🐞 问题</option><option value="sug">💡 建议</option></select>
+        <span class="tag s-pend">待处理</span>
+        <span class="sp"></span><button class="btn" id="openClose">结案</button></div>
+      <div class="wb">
+        <div class="card">
+          <div class="meta" style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #f3f4f6">
+            <select><option>调用报错</option><option>接入和配置</option><option>速度慢或不稳定</option></select>
+            <select><option>严重程度</option><option>严重</option><option selected>一般</option><option>轻微</option><option>无效</option></select>
+            <span class="chip">Claude 分组</span><span class="chip">529</span><button class="chip" style="border-style:dashed">+ 标签</button>
+          </div>
+          <div class="tl">
+            <div class="msg"><div class="av u">A</div><div class="bub"><div class="who"><b>alice@example.com</b>11-16 14:02</div>
+              <div class="body">Claude Code 连续请求时偶发 529，重试几次才成功。
+                <div class="kv"><span>Key</span><span>my-claude-key (#88)</span><span>模型</span><span>claude-sonnet-4-5</span><span>时间</span><span>今天 13:50 左右</span></div>
+                <div class="imgs"><div></div></div></div></div></div>
+            <div class="msg"><div class="av a">管</div><div class="bub ask"><div class="who"><b>admin</b>11-16 15:20 · 追问</div>
+              <div class="body">方便贴一下 Claude Code 的完整报错信息吗？另外是否开启了并行子任务？</div></div></div>
+            <div class="msg"><div class="av a">管</div><div class="bub note"><div class="who"><b>admin</b>11-16 15:22 · 内部备注</div>
+              <div class="body">右侧 13:48 有 3 条 529，都在 claude-pro 分组的账号 #12 上，先观察。</div></div></div>
+            <div class="msg"><div class="av u">A</div><div class="bub"><div class="who"><b>alice@example.com</b>11-16 16:01</div>
+              <div class="body">报错是 overloaded_error，开了 3 个子任务并行。<div class="imgs"><div></div><div></div></div></div></div></div>
+            <div class="ev"><span>用户补充 · 回到待处理</span></div>
+          </div>
+          <div class="reply">
+            <div class="acts" id="acts"><button class="on">回复</button><button>追问</button><button>内部备注</button></div>
+            <textarea rows="3" id="replyBox" placeholder="回复用户…"></textarea>
+            <div class="row" style="margin-top:10px"><button class="btn g sm">🖼</button><span style="flex:1"></span><button class="btn" id="sendBtn">发送</button></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="panel">
+            <h4>用户</h4>
+            <div class="kvs"><span>账号</span><span>alice@example.com</span><span>注册</span><span>2026-03-02</span><span>余额</span><span>$42.10</span><span>订阅</span><span>Claude Pro 月卡</span><span>历史</span><span>8 条 · 采纳 2</span></div>
+          </div>
+          <div class="panel">
+            <h4>错误请求 <span style="float:right;font-size:12px">提交前 24h ~ 后 1h</span></h4>
+            <div class="err"><b>529</b><span>13:48</span><span class="muted">claude-sonnet-4-5 · claude-pro</span></div>
+            <div class="err"><b>529</b><span>13:48</span><span class="muted">claude-sonnet-4-5 · claude-pro</span></div>
+            <div class="err"><b>529</b><span>13:47</span><span class="muted">claude-sonnet-4-5 · claude-pro</span></div>
+            <div class="err"><b>401</b><span>09:12</span><span class="muted">gpt-5 · openai</span></div>
+          </div>
+          <div class="panel">
+            <h4>环境</h4>
+            <div class="kvs"><span>页面</span><span>/keys</span><span>浏览器</span><span>Chrome 142 · macOS</span><span>版本</span><span>v0.1.98-plus</span><span>IP</span><span>1.2.*.*</span></div>
+          </div>
+          <div class="panel">
+            <h4>关联</h4>
+            <div style="font-size:13px"><a href="#" style="color:var(--pd)">#1003</a> <span class="muted">上一条 · 调用报错 · 已解决</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 分析看板 -->
+    <section class="page" id="a-dash">
+      <div class="h1">分析看板<span class="sp"></span>
+        <div class="seg" style="padding:3px"><button class="on" style="padding:4px 14px">7 天</button><button style="padding:4px 14px">30 天</button><button style="padding:4px 14px">90 天</button></div>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><div class="k">新增</div><div class="v">86</div></div>
+        <div class="kpi"><div class="k">问题 / 建议</div><div class="v">61 <span class="muted" style="font-size:16px">/ 25</span></div></div>
+        <div class="kpi"><div class="k">待处理</div><div class="v" style="color:var(--warn)">9</div></div>
+        <div class="kpi"><div class="k">平均处理时长</div><div class="v">19h</div></div>
+        <div class="kpi"><div class="k">发放积分</div><div class="v" style="color:var(--vi)">3,500</div></div>
+      </div>
+      <div class="dash">
+        <div class="card">
+          <div class="ct">场景分布</div>
+          <div class="leg"><span><i style="background:#f87171"></i>问题</span><span><i style="background:#a78bfa"></i>建议</span></div>
+          <div class="bars" id="bars"></div>
+        </div>
+        <div class="card">
+          <div class="ct">严重程度 × 场景</div>
+          <div class="hm" id="hm"></div>
+        </div>
+        <div class="card">
+          <div class="ct">每日新增</div>
+          <div class="leg"><span><i style="background:#f87171"></i>问题</span><span><i style="background:#a78bfa"></i>建议</span></div>
+          <div class="spark" id="spark"></div>
+          <div class="row muted" style="justify-content:space-between;font-size:12px;margin-top:4px"><span>11-10</span><span>11-16</span></div>
+        </div>
+        <div class="card">
+          <div class="ct">建议池</div>
+          <table>
+            <thead><tr><th>建议</th><th>场景</th><th>人数</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td class="ell" style="max-width:200px">订阅自动续费</td><td>充值和扣费</td><td><b>7</b></td><td><span class="tag s-adopt">已采纳</span></td></tr>
+              <tr><td class="ell" style="max-width:200px">Key 页生成 Codex 配置</td><td>接入和配置</td><td><b>5</b></td><td><span class="tag s-pend">待处理</span></td></tr>
+              <tr><td class="ell" style="max-width:200px">签到补签</td><td>活动和权益</td><td><b>3</b></td><td><span class="tag s-pend">待处理</span></td></tr>
+              <tr><td class="ell" style="max-width:200px">用量导出 Excel</td><td>其他</td><td><b>2</b></td><td><span class="tag s-no">不处理</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card" style="grid-column:1/-1">
+          <div class="ct">用户</div>
+          <table>
+            <thead><tr><th>用户</th><th>反馈</th><th>问题 / 建议</th><th>场景分布</th><th>有效率</th><th>采纳</th><th>积分</th></tr></thead>
+            <tbody id="users"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 反馈设置 -->
+    <section class="page" id="a-set">
+      <div class="h1">反馈设置<span class="sp"></span><button class="btn">保存</button></div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:12px"><div class="ct" style="margin:0">公告</div><div class="sw b on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="edit2">
+          <textarea id="mdIn"></textarea>
+          <div class="pv md" id="mdOut"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ct">场景</div>
+        <table>
+          <thead><tr><th style="width:24px"></th><th>图标</th><th>名称</th><th>Key</th><th>自动预选页面</th><th>启用</th><th></th></tr></thead>
+          <tbody id="scTable"></tbody>
+        </table>
+        <button class="btn g sm" style="margin-top:12px">+ 新增场景</button>
+      </div>
+      <div class="card">
+        <div class="ct">规则</div>
+        <div class="set-row"><span>启用反馈中心</span><div class="sw b on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="set-row"><span>悬浮反馈按钮</span><div class="sw b on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="set-row"><span>每人每天最多提交</span><input value="10"></div>
+        <div class="set-row"><span>提交间隔（秒）</span><input value="60"></div>
+        <div class="set-row"><span>同时进行中上限</span><input value="5"></div>
+        <div class="set-row"><span>截图数量 / 单张大小 (MB)</span><div class="row" style="gap:6px"><input value="3" style="width:56px"><input value="5" style="width:56px"></div></div>
+        <div class="set-row"><span>待补充自动关闭（天，0 关闭）</span><input value="7"></div>
+        <div class="set-row"><span>建议采纳积分 默认 / 步进</span><div class="row" style="gap:6px"><input value="500" style="width:72px"><input value="100" style="width:72px"></div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 结案弹窗 -->
+<div class="mask" id="mask">
+  <div class="modal">
+    <h3>结案 #1024 <span class="tag" id="mType"></span></h3>
+    <div class="lbl" style="margin-top:0">结论</div>
+    <div class="opts" id="mOpts"></div>
+    <div id="mExtra"></div>
+    <div class="lbl">给用户的话</div>
+    <textarea rows="2" placeholder="选填"></textarea>
+    <div class="pts" id="mPts">
+      <div class="sw on" id="ptsSw"></div><span style="flex:1">发放积分</span>
+      <div class="step"><button id="ptMinus">−</button><input id="ptVal" value="500"><button id="ptPlus">+</button></div>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:20px">
+      <button class="btn g" id="mCancel">取消</button><button class="btn" id="mOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+
+/* ---------- 导航 ---------- */
+function go(id){
+  const admin = id.startsWith('a-');
+  $('#app-user').style.display = admin ? 'none' : 'flex';
+  $('#app-admin').style.display = admin ? 'flex' : 'none';
+  $$('.page').forEach(p => p.classList.toggle('on', p.id === id));
+  $$('.proto button').forEach(b => b.classList.toggle('on', b.dataset.go === id));
+  $('#nav-u-fb').classList.toggle('on', id.startsWith('u-l') || id.startsWith('u-d'));
+  $('#nav-a-list').classList.toggle('on', id === 'a-list' || id === 'a-detail');
+  $('#nav-a-dash').classList.toggle('on', id === 'a-dash');
+  $('#nav-a-set').classList.toggle('on', id === 'a-set');
+  window.scrollTo(0,0);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-go]');
+  if (t){ e.preventDefault(); go(t.dataset.go); }
+});
+
+/* ---------- 场景 ---------- */
+const SC = [
+  ['🔌','接入和配置','setup','/keys'],
+  ['⚠️','调用报错','api_error','—'],
+  ['🧠','模型效果不对','model_quality','/model-plaza'],
+  ['🐢','速度慢或不稳定','latency','/channel-status'],
+  ['💳','充值和扣费','billing','/purchase, /orders'],
+  ['🎁','活动和权益','rewards','/points-park, /redeem'],
+  ['👤','账号和登录','account','/profile'],
+  ['💬','其他','other','—'],
+];
+$('#scs').innerHTML = SC.map((s,i)=>`<div class="sc${i===1?' on':''}"><div class="ic">${s[0]}</div><div class="t">${s[1]}</div></div>`).join('');
+$('#scs').addEventListener('click', e => {
+  const c = e.target.closest('.sc'); if(!c) return;
+  $$('.sc').forEach(x=>x.classList.remove('on')); c.classList.add('on');
+});
+$('#scTable').innerHTML = SC.map(s=>`<tr><td class="drag">⋮⋮</td><td style="font-size:18px">${s[0]}</td><td>${s[1]}</td><td class="muted"><code>${s[2]}</code></td><td class="muted">${s[3]}</td><td><div class="sw b on" onclick="this.classList.toggle('on')"></div></td><td><button class="btn g sm">编辑</button></td></tr>`).join('');
+
+/* ---------- 类型切换（用户端） ---------- */
+$('#typeSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  $$('#typeSeg button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  const sug = b.dataset.type === 'sug';
+  $('#extra-issue').style.display = sug ? 'none' : '';
+  $('#extra-sug').style.display = sug ? '' : 'none';
+  $('#desc').placeholder = sug ? '想要什么？在什么情况下会用到？' : '发生了什么？怎么操作出现的？';
+});
+
+/* ---------- 回复/追问/备注 ---------- */
+$('#acts').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  $$('#acts button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  const k = b.textContent;
+  $('#replyBox').placeholder = {回复:'回复用户…',追问:'需要用户补充什么？发送后状态变为「待补充」',内部备注:'仅管理员可见'}[k];
+  $('#replyBox').style.background = k==='内部备注' ? '#fefce8' : k==='追问' ? '#fff7ed' : '#fff';
+  $('#sendBtn').textContent = k==='追问' ? '发送追问' : k==='内部备注' ? '保存备注' : '发送';
+});
+
+/* ---------- 结案弹窗 ---------- */
+let pick = '';
+function renderModal(){
+  const sug = $('#aType').value === 'sug';
+  $('#mType').className = 'tag ' + (sug?'t-sug':'t-issue');
+  $('#mType').textContent = sug ? '建议' : '问题';
+  const opts = sug ? ['已采纳','不处理','重复'] : ['已解决','不处理','重复'];
+  if(!opts.includes(pick)) pick = opts[0];
+  $('#mOpts').innerHTML = opts.map(o=>`<button class="${o===pick?'on':''}">${o}</button>`).join('');
+  $('#mExtra').innerHTML =
+    pick==='不处理' ? '<div class="lbl">原因</div><select><option>信息不足</option><option>无法复现</option><option>不是问题</option><option>暂不考虑</option><option>其他</option></select>' :
+    pick==='重复'   ? '<div class="lbl">主反馈</div><input placeholder="#编号">' : '';
+  $('#mPts').style.display = (sug && pick==='已采纳') ? 'flex' : 'none';
+}
+$('#mOpts').addEventListener('click', e => { const b=e.target.closest('button'); if(!b) return; pick=b.textContent; renderModal(); });
+$('#openClose').onclick = () => { renderModal(); $('#mask').classList.add('on'); };
+$('#mCancel').onclick = $('#mOk').onclick = () => $('#mask').classList.remove('on');
+$('#mask').addEventListener('click', e => { if(e.target.id==='mask') $('#mask').classList.remove('on'); });
+$('#ptsSw').onclick = function(){ this.classList.toggle('on'); $('.step').style.opacity = this.classList.contains('on')?1:.4; };
+$('#ptMinus').onclick = () => $('#ptVal').value = Math.max(0, (+$('#ptVal').value||0) - 100);
+$('#ptPlus').onclick  = () => $('#ptVal').value = (+$('#ptVal').value||0) + 100;
+
+/* ---------- Markdown 公告 ---------- */
+const MD_DEFAULT = `### 📣 反馈须知
+- **紧急问题**（无法使用、充值未到账）请直接进 [售后群](https://example.com/group)，回复更快
+- 反馈会在 1~3 个工作日内处理
+- 建议被采纳可获得 **积分奖励** 🎁
+
+最近根据大家的反馈：签到页支持补签、\`/keys\` 页新增 Codex 配置一键复制`;
+function md(src){
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inl = s => esc(s)
+    .replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')
+    .replace(/`(.+?)`/g,'<code>$1</code>')
+    .replace(/\[(.+?)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  let out='', inList=false;
+  for(const line of src.split('\n')){
+    const li = line.match(/^\s*[-*] (.*)/), h = line.match(/^#{1,4} (.*)/);
+    if(!li && inList){ out+='</ul>'; inList=false; }
+    if(li){ if(!inList){ out+='<ul>'; inList=true; } out+=`<li>${inl(li[1])}</li>`; }
+    else if(h) out+=`<h3>${inl(h[1])}</h3>`;
+    else if(line.trim()) out+=`<p>${inl(line)}</p>`;
+  }
+  return out + (inList?'</ul>':'');
+}
+function syncNotice(){
+  const html = md($('#mdIn').value);
+  $('#mdOut').innerHTML = html;
+  $$('[data-notice]').forEach(n => n.innerHTML = html);
+}
+$('#mdIn').value = MD_DEFAULT;
+$('#mdIn').addEventListener('input', syncNotice);
+syncNotice();
+
+/* ---------- 看板数据 ---------- */
+const DIST = [['调用报错',18,2],['充值和扣费',12,6],['模型效果不对',11,1],['接入和配置',8,7],['速度慢或不稳定',7,0],['活动和权益',3,6],['账号和登录',2,1],['其他',0,2]];
+const max = Math.max(...DIST.map(d=>d[1]+d[2]));
+$('#bars').innerHTML = DIST.map(d=>`<div class="b"><span>${d[0]}</span><div class="tr"><i style="width:${d[1]/max*100}%;background:#f87171"></i><i style="width:${d[2]/max*100}%;background:#a78bfa"></i></div><span class="muted">${d[1]+d[2]}</span></div>`).join('');
+
+const HM = [['调用报错',[4,9,4,1]],['充值和扣费',[5,7,4,2]],['模型效果不对',[1,4,3,4]],['接入和配置',[0,5,8,2]],['速度慢或不稳定',[2,4,1,0]],['活动和权益',[0,2,6,1]]];
+const hc = v => v===0?'#f9fafb':`rgba(239,68,68,${Math.min(.12+v*.09,.9)})`;
+$('#hm').innerHTML = '<div></div>' + ['严重','一般','轻微','无效'].map(x=>`<div class="h">${x}</div>`).join('') +
+  HM.map(r=>`<div class="r">${r[0]}</div>`+r[1].map(v=>`<div style="background:${hc(v)};color:${v>5?'#fff':'inherit'}">${v||''}</div>`).join('')).join('');
+
+const DAYS = [[9,3],[7,4],[12,2],[8,5],[6,3],[10,4],[9,4]];
+const dm = Math.max(...DAYS.map(d=>d[0]+d[1]));
+$('#spark').innerHTML = DAYS.map(d=>`<div><i style="height:${d[0]/dm*100}px;background:#f87171"></i><i style="height:${d[1]/dm*100}px;background:#a78bfa"></i></div>`).join('');
+
+const COLORS = ['#38bdf8','#f87171','#fbbf24','#34d399','#a78bfa','#94a3b8'];
+const USERS = [
+  ['alice@example.com',14,[9,5],[5,4,2,2,1],'86%',3,1500],
+  ['bob@example.com',11,[10,1],[0,8,2,1,0],'64%',0,0],
+  ['carol@example.com',9,[2,7],[6,0,1,0,2],'89%',4,2300],
+  ['dave@example.com',7,[7,0],[1,1,5,0,0],'43%',0,0],
+  ['erin@example.com',5,[1,4],[0,0,0,1,4],'80%',2,1000],
+];
+$('#users').innerHTML = USERS.map(u=>`<tr class="clk"><td>${u[0]}</td><td><b>${u[1]}</b></td><td><span class="tag t-issue">${u[2][0]}</span> <span class="tag t-sug">${u[2][1]}</span></td>
+  <td><div style="display:flex;height:10px;width:180px;border-radius:5px;overflow:hidden">${u[3].map((v,i)=>`<i style="flex:${v};background:${COLORS[i]}"></i>`).join('')}</div></td>
+  <td>${u[4]}</td><td>${u[5]}</td><td style="color:var(--vi)">${u[6]||'—'}</td></tr>`).join('');
+
+go('u-new');
+</script>
+</body>
+</html>

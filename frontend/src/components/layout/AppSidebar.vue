@@ -55,6 +55,7 @@
                   :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
                 >
                   <span class="min-w-0 truncate">{{ item.label }}</span>
+                  <NavBadge v-if="item.badge && !isGroupExpanded(item)" :count="item.badge() ?? 0" /><!-- [plus] -->
                   <ChevronDownIcon
                     class="h-4 w-4 flex-shrink-0 transition-transform duration-200"
                     :class="isGroupExpanded(item) ? 'rotate-180' : ''"
@@ -73,6 +74,7 @@
                 >
                   <component :is="child.icon" class="h-4 w-4 flex-shrink-0" />
                   <span>{{ child.label }}</span>
+                  <NavBadge v-if="child.badge" :count="child.badge() ?? 0" /><!-- [plus] -->
                 </router-link>
               </div>
             </template>
@@ -97,6 +99,7 @@
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
               <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <NavBadge v-if="item.badge" :count="item.badge() ?? 0" :collapsed="sidebarCollapsed" /><!-- [plus] -->
             </router-link>
           </template>
         </div>
@@ -135,6 +138,7 @@
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
               <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <NavBadge v-if="item.badge" :count="item.badge() ?? 0" :collapsed="sidebarCollapsed" /><!-- [plus] -->
             </router-link>
           </template>
         </div>
@@ -170,6 +174,7 @@
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
               <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <NavBadge v-if="item.badge" :count="item.badge() ?? 0" :collapsed="sidebarCollapsed" /><!-- [plus] -->
             </router-link>
           </template>
         </div>
@@ -238,6 +243,8 @@ import { iqNavFlag, iqMenuName } from '@/plus/iq/user/navFlag' // [plus]
 import { IQNavIcon } from '@/plus/iq/navIcon' // [plus]
 import { iqAdminNav } from '@/plus/iq/adminNav' // [plus]
 import { dispatchAdminNav } from '@/plus/dispatch/adminNav' // [plus]
+import { feedbackAdminNav, feedbackUserNav } from '@/plus/feedback/nav' // [plus]
+import NavBadge from '@/plus/feedback/components/NavBadge.vue' // [plus]
 
 interface NavItem {
   path: string
@@ -260,6 +267,8 @@ interface NavItem {
    * 开关切换时菜单自动更新。
    */
   featureFlag?: () => boolean | undefined
+  // [plus] 菜单右侧红点数字，返回 0 不显示
+  badge?: () => number | undefined
 }
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
@@ -782,6 +791,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/points-park', label: '积分乐园', icon: ParkNavIcon, hideInSimpleMode: true, featureFlag: pointsParkNavFlag }, // [plus]
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
+    feedbackUserNav, // [plus]
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     { path: '/settings/mcp', label: t('mcp.title'), icon: MCPIcon, featureFlag: flagMCP },
     ...customMenuItemsForUser.value.map((item): NavItem => navItemForCustomMenu(item)),
@@ -908,6 +918,7 @@ const adminNavItems = computed((): NavItem[] => {
     pointsParkAdminNav, // [plus]
     iqAdminNav, // [plus]
     dispatchAdminNav, // [plus]
+    feedbackAdminNav, // [plus]
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 

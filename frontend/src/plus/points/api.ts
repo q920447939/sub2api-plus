@@ -187,7 +187,8 @@ export const REASON_META: Record<string, { label: string; icon: string }> = {
   slot_consume: { label: '幸运九宫格消耗', icon: '🎰' },
   slot_win: { label: '幸运九宫格奖励', icon: '🎉' },
   expire: { label: '积分过期清零', icon: '⏳' },
-  admin_adjust: { label: '积分调整', icon: '🛠️' }
+  admin_adjust: { label: '积分调整', icon: '🛠️' },
+  feedback_reward: { label: '建议被采纳', icon: '💡' }
 }
 export const reasonLabel = (r: string) => REASON_META[r]?.label ?? r
 export const reasonIcon = (r: string) => REASON_META[r]?.icon ?? '🪙'

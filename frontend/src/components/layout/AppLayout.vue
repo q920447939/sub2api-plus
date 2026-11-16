@@ -19,6 +19,8 @@
         <slot />
       </main>
     </div>
+
+    <FeedbackHost /><!-- [plus] 反馈悬浮按钮 + 提交面板 -->
   </div>
 </template>
 
@@ -31,6 +33,7 @@ import { useOnboardingTour } from '@/composables/useOnboardingTour'
 import { useOnboardingStore } from '@/stores/onboarding'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
+import FeedbackHost from '@/plus/feedback/components/FeedbackHost.vue' // [plus]
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
