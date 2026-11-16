@@ -1,0 +1,130 @@
+# =============================================================================
+# Sub2API Plus — Local Development Build
+# =============================================================================
+# Builds the fork image from local source for day-to-day development.
+# Uses isolated containers, volumes, and network — never touches prod data.
+#
+# Quick start (run from repo root):
+#   docker compose -f deploy/docker-compose.plus-dev.yml --env-file deploy/.env.plus-dev up --build -d
+#
+# Common commands:
+#   Logs:    docker compose -f deploy/docker-compose.plus-dev.yml logs -f sub2api-plus-dev
+#   Rebuild: docker compose -f deploy/docker-compose.plus-dev.yml up --build -d
+#   Stop:    docker compose -f deploy/docker-compose.plus-dev.yml down
+#
+# Access:      http://localhost:8090
+# Debug DB:    psql -h 127.0.0.1 -p 15432 -U sub2api -d sub2api_plus_dev
+# Debug Redis: redis-cli -h 127.0.0.1 -p 16379
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Sub2API Plus application (built from local source)
+  # ---------------------------------------------------------------------------
+  sub2api-plus-dev:
+    build:
+      context: ..                          # repo root — Dockerfile needs frontend/ backend/
+      dockerfile: deploy/Dockerfile
+      args:
+        GOPROXY: "https://goproxy.cn,direct"
+        GOLANG_IMAGE: "golang:1.27.3-alpine"   # go.mod requires >=1.27.3; deploy/Dockerfile default is behind
+    image: sub2api-plus:dev                # separate tag from :local so builds don't conflict
+    container_name: sub2api-plus-dev
+    restart: unless-stopped
+    ports:
+      - "8090:8080"
+    depends_on:
+      sub2api-plus-dev-postgres:
+        condition: service_healthy
+      sub2api-plus-dev-redis:
+        condition: service_healthy
+    environment:
+      - AUTO_SETUP=true
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=debug
+      - RUN_MODE=standard
+      - DATABASE_HOST=sub2api-plus-dev-postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-sub2api}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.plus-dev}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api_plus_dev}
+      - DATABASE_SSLMODE=disable
+      - DATABASE_MAX_OPEN_CONNS=50
+      - DATABASE_MAX_IDLE_CONNS=10
+      - DATABASE_CONN_MAX_LIFETIME_MINUTES=30
+      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=5
+      - REDIS_HOST=sub2api-plus-dev-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=0
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@local.test}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env.plus-dev}
+      - JWT_SECRET=${JWT_SECRET:-local-dev-jwt-secret-please-change}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
+      - TZ=${TZ:-Asia/Shanghai}
+    volumes:
+      - sub2api-plus-dev-data:/app/data
+    networks:
+      - sub2api-plus-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL (dedicated dev instance — postgres:18-alpine, matches prod)
+  # ---------------------------------------------------------------------------
+  sub2api-plus-dev-postgres:
+    image: postgres:18-alpine
+    container_name: sub2api-plus-dev-postgres
+    restart: unless-stopped
+    environment:
+      - PGDATA=/var/lib/postgresql/data
+      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.plus-dev}
+      - POSTGRES_DB=${POSTGRES_DB:-sub2api_plus_dev}
+      - TZ=${TZ:-Asia/Shanghai}
+    volumes:
+      - sub2api-plus-dev-pg-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:15432:5432"       # debug access from host only
+    networks:
+      - sub2api-plus-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api_plus_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Redis (dedicated dev instance — redis:8-alpine, matches prod)
+  # ---------------------------------------------------------------------------
+  sub2api-plus-dev-redis:
+    image: redis:8-alpine
+    container_name: sub2api-plus-dev-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", ""]
+    volumes:
+      - sub2api-plus-dev-redis-data:/data
+    ports:
+      - "127.0.0.1:16379:6379"       # debug access from host only
+    networks:
+      - sub2api-plus-dev-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  sub2api-plus-dev-data:
+  sub2api-plus-dev-pg-data:
+  sub2api-plus-dev-redis-data:
+
+networks:
+  sub2api-plus-dev-network:
+    driver: bridge
