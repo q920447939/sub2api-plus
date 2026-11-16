@@ -117,7 +117,8 @@ const actions = [
   { key: 'ul', text: '•', title: '列表', cls: 'text-lg', run: () => prefixLines(() => '- ') },
   { key: 'ol', text: '1.', title: '编号列表', cls: 'text-xs', run: () => prefixLines((i) => `${i + 1}. `) },
   { key: 'q', text: '❝', title: '引用', cls: '', run: () => prefixLines(() => '> ') },
-  { key: 'a', text: '🔗', title: '链接', cls: 'text-xs', run: () => wrap('[', '](https://)', '链接文字') }
+  { key: 'a', text: '🔗', title: '链接', cls: 'text-xs', run: () => wrap('[', '](https://)', '链接文字') },
+  { key: 'img', text: '🖼', title: '图片（|240 设宽度；相邻两行的图片会并排）', cls: 'text-xs', run: () => wrap('![', '|240](https://)', '图片说明') }
 ]
 
 defineExpose({ focus: () => area.value?.focus() })

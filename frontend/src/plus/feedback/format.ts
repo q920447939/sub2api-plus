@@ -76,3 +76,17 @@ export function describeUA(ua?: string): string {
   ])
   return [browser, os].filter(Boolean).join(' · ')
 }
+
+/**
+ * 图片尺寸写在说明文字后面：![说明|200](url) 宽 200px；|200x120 指定宽高；|50% 按卡片宽度的百分比。
+ * 不写尺寸时按默认上限显示。
+ */
+export function parseImageSize(alt: string): { alt: string; style: string } {
+  const m = /^(.*?)\s*\|\s*(\d{1,4})(%|(?:x(\d{1,4})))?\s*$/.exec(alt)
+  if (!m) return { alt, style: '' }
+  const w = Math.min(Number(m[2]), m[3] === '%' ? 100 : 2000)
+  if (!w) return { alt: m[1], style: '' }
+  if (m[3] === '%') return { alt: m[1], style: `width:${w}%` }
+  const h = m[4] ? Math.min(Number(m[4]), 2000) : 0
+  return { alt: m[1], style: `width:${w}px${h ? `;height:${h}px;object-fit:cover` : ''}` }
+}

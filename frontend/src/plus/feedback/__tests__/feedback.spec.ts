@@ -44,3 +44,33 @@ describe('Segmented', () => {
     expect(w.emitted('update:modelValue')?.[0]).toEqual(['b'])
   })
 })
+
+describe('公告图片尺寸与并排', () => {
+  it('|宽度、|宽x高、|百分比', async () => {
+    const { parseImageSize } = await import('../format')
+    expect(parseImageSize('logo|200')).toEqual({ alt: 'logo', style: 'width:200px' })
+    expect(parseImageSize('logo|200x120').style).toBe('width:200px;height:120px;object-fit:cover')
+    expect(parseImageSize('|50%')).toEqual({ alt: '', style: 'width:50%' })
+    expect(parseImageSize('普通说明')).toEqual({ alt: '普通说明', style: '' })
+  })
+
+  it('相邻行的图片并排，带尺寸', () => {
+    const w = mount(MarkdownView, { props: { source: '![a|200](https://x/a.png)\n![b|200](https://x/b.png)\n\n正文' } })
+    const row = w.find('.fb-img-row')
+    expect(row.exists()).toBe(true)
+    expect(row.findAll('img')).toHaveLength(2)
+    expect(row.find('img').attributes('style')).toContain('width:200px')
+    expect(w.find('p').text()).toBe('正文')
+  })
+
+  it('标题行和下面的图片在同一段时，图片仍并排、标题单独成段', () => {
+    const w = mount(MarkdownView, { props: { source: '并排示例\n![a|240](https://x/a.png)\n![b|240](https://x/b.png)' } })
+    expect(w.findAll('p')[0].text()).toBe('并排示例')
+    expect(w.find('.fb-img-row').findAll('img')).toHaveLength(2)
+  })
+
+  it('非 http 图片地址不渲染成图片', () => {
+    const w = mount(MarkdownView, { props: { source: '![x](javascript:alert(1))' } })
+    expect(w.find('img').exists()).toBe(false)
+  })
+})

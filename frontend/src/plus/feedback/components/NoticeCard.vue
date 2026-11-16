@@ -50,17 +50,6 @@ watch(
 </script>
 
 <style scoped>
-/* 公告里的图片最多 160px 高，按比例缩放，不撑满整屏 */
-.fb-notice :deep(img) {
-  display: block;
-  max-height: 160px;
-  width: auto;
-  max-width: 100%;
-  object-fit: contain;
-  margin: 0.25rem 0;
-  border-radius: 0.5rem;
-  box-shadow: none;
-}
 .fb-notice-fade {
   background: linear-gradient(to bottom, transparent, rgb(255 255 255));
 }
