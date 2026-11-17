@@ -1,7 +1,7 @@
 // [plus] 反馈中心的全局状态：配置（meta）、红点计数、提交面板开关。
 // 侧边栏、悬浮按钮、页面共用同一份，避免重复请求。
 import { reactive, ref } from 'vue'
-import { userApi, adminApi, type Meta, type Scenario } from './api'
+import { userApi, adminApi, type Kind, type Meta, type Scenario } from './api'
 
 const REFRESH_MS = 60_000
 
@@ -74,4 +74,22 @@ export function openComposer(from: string, prevId?: number) {
   composer.from = from
   composer.prevId = prevId
   composer.open = true
+}
+
+/**
+ * 提交面板的草稿。放在组件外：每个页面各自挂一套 AppLayout，换页时面板会被销毁重建，
+ * 草稿放这里才能「关掉面板去别的页面复制报错，回来接着写」。只存内存，提交成功后清空。
+ * owner 记录草稿属于哪个用户，同一标签页换号登录时清掉，避免看到上一个人的草稿。
+ */
+export const draft = reactive({
+  owner: undefined as number | undefined,
+  kind: 'issue' as Kind,
+  scenarioKey: '',
+  content: '',
+  images: [] as number[],
+  extra: {} as Record<string, string>
+})
+
+export function resetDraft(owner = draft.owner) {
+  Object.assign(draft, { owner, kind: 'issue', scenarioKey: '', content: '', images: [], extra: {} })
 }

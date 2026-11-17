@@ -24,6 +24,7 @@ export interface Scenario {
   icon: string
   hint: string
   fields?: Field[]
+  /** 停用的场景也会返回（用于显示历史反馈的名称），提交时只能选 enabled !== false 的 */
   enabled?: boolean
 }
 
@@ -39,6 +40,8 @@ export interface Meta {
   max_image_mb: number
   content_min: number
   content_max: number
+  /** 管理员回复后用户多少天没回应会自动结案，0 = 不自动结案 */
+  ask_timeout_days: number
 }
 
 export interface FeedbackEvent {
@@ -144,8 +147,8 @@ export interface SubmitInput {
 export const userApi = {
   meta: () => apiClient.get<Meta>('/plus/feedback/meta').then((r) => r.data),
   unread: () => apiClient.get<{ count: number }>('/plus/feedback/unread').then((r) => r.data.count),
-  list: (params: { page?: number; page_size?: number; state?: '' | 'open' | 'closed'; kind?: Kind | '' }) =>
-    apiClient.get<Page<ListItem>>('/plus/feedback', { params }).then((r) => r.data),
+  list: (params: { page?: number; page_size?: number; state?: '' | 'open' | 'closed'; kind?: Kind | '' }, config?: { signal?: AbortSignal }) =>
+    apiClient.get<Page<ListItem>>('/plus/feedback', { params, ...config }).then((r) => r.data),
   submit: (input: SubmitInput) => apiClient.post<{ id: number }>('/plus/feedback', input).then((r) => r.data.id),
   detail: (id: number) =>
     apiClient
@@ -199,6 +202,8 @@ export interface AdminQuery {
   content?: string
   user?: string
   id?: string
+  /** 只看近 N 天提交的（与看板口径一致） */
+  days?: number | string
   page?: number
   page_size?: number
 }
@@ -262,8 +267,8 @@ export interface Stats {
 const A = '/plus/admin/feedback'
 
 export const adminApi = {
-  list: (params: AdminQuery) =>
-    apiClient.get<Page<ListItem> & { counts: Partial<Record<Status, number>> }>(A, { params }).then((r) => r.data),
+  list: (params: AdminQuery, config?: { signal?: AbortSignal }) =>
+    apiClient.get<Page<ListItem> & { counts: Partial<Record<Status, number>> }>(A, { params, ...config }).then((r) => r.data),
   pendingCount: () => apiClient.get<{ count: number }>(`${A}/pending-count`).then((r) => r.data.count),
   tags: () => apiClient.get<string[]>(`${A}/tags`).then((r) => r.data),
   detail: (id: number) =>

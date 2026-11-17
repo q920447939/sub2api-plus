@@ -38,8 +38,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Icon from '@/components/icons/Icon.vue'
+import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import { loadMeta, meta, openComposer } from '../state'
+import { composer, draft, loadMeta, meta, openComposer, resetDraft } from '../state'
 import Composer from './Composer.vue'
 
 const HINT_KEY = 'plus_feedback_hint_seen'
@@ -47,12 +48,36 @@ const HINT_DELAY_MS = 6000
 const HINT_SHOW_MS = 10000
 
 const route = useRoute()
+const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const enabled = computed(() => authStore.isAuthenticated && !!meta.value?.enabled)
-// 反馈页本身和管理端不显示入口
+// 反馈页本身和管理端不显示入口；手机侧边栏打开时也收起，免得浮在遮罩上被误点
 const showTab = computed(
-  () => enabled.value && !!meta.value?.float_button && !route.path.startsWith('/feedback') && !route.path.startsWith('/admin')
+  () =>
+    enabled.value &&
+    !!meta.value?.float_button &&
+    !appStore.mobileOpen &&
+    !route.path.startsWith('/feedback') &&
+    !route.path.startsWith('/admin')
+)
+
+// 草稿只属于当前登录用户：同一标签页换号后清掉
+watch(
+  () => authStore.user?.id,
+  (id) => {
+    if (id === undefined) return
+    if (draft.owner !== undefined && draft.owner !== id) resetDraft(id)
+    else draft.owner = id
+  },
+  { immediate: true }
+)
+
+// 返回键或任何跳转都收起面板（草稿在 state 里，不会丢），不把空面板带到下一个页面。
+// 每个页面各自挂 AppLayout，换页时这里先被卸载、watch 来不及触发，所以卸载时也收一次
+watch(
+  () => route.path,
+  () => (composer.open = false)
 )
 
 const hint = ref(false)
@@ -90,6 +115,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   timers.forEach(clearTimeout)
   timers = []
+  composer.open = false
 })
 </script>
 

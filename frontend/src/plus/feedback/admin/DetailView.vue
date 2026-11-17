@@ -7,27 +7,25 @@
         反馈处理
       </router-link>
 
-      <div v-if="!d" class="card p-16 text-center text-sm text-gray-400">{{ error || '正在加载…' }}</div>
+      <div v-if="!d" class="card">
+        <EmptyState v-if="error" :title="error" action-text="重试" :action-icon="false" @action="load" />
+        <div v-else class="flex justify-center p-16"><LoadingSpinner /></div>
+      </div>
 
       <div v-else class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <!-- 左：对话 -->
         <main class="card min-w-0 overflow-hidden">
           <header class="card-header flex items-center gap-3">
-            <span class="text-xl leading-none">{{ scenarioIcon(f.scenario) }}</span>
+            <span class="shrink-0 text-xl leading-none">{{ scenarioIcon(f.scenario) }}</span>
             <div class="min-w-0 flex-1">
-              <h2 class="flex items-center gap-2 truncate font-semibold text-gray-900 dark:text-white">
-                {{ KIND_LABEL[f.kind] }} · {{ scenarioLabel(f.scenario) }}
-                <span v-if="d.impact > 1" class="badge badge-primary" title="影响人数">×{{ d.impact }}</span>
+              <h2 class="flex min-w-0 items-center gap-2 font-semibold text-gray-900 dark:text-white">
+                <span class="truncate" :title="heading">{{ heading }}</span>
+                <span v-if="d.impact > 1" class="badge badge-primary shrink-0" title="影响人数">×{{ d.impact }}</span>
               </h2>
-              <p class="mt-0.5 truncate text-xs text-gray-400">
-                #{{ f.id }} · {{ fullTime(f.created_at) }}
-                <template v-if="f.kind_user !== f.kind || f.scenario_user !== f.scenario">
-                  · 用户原选 {{ KIND_LABEL[f.kind_user ?? f.kind] }} / {{ scenarioLabel(f.scenario_user ?? f.scenario) }}
-                </template>
-              </p>
+              <p class="mt-0.5 truncate text-xs text-gray-400 dark:text-dark-400" :title="subtitle">{{ subtitle }}</p>
             </div>
-            <StatusPill :status="f.status" />
-            <button v-if="isOpen(f.status)" type="button" class="btn btn-primary btn-sm" @click="closing = true">结案</button>
+            <StatusPill class="shrink-0" :status="f.status" />
+            <button v-if="isOpen(f.status)" type="button" class="btn btn-primary btn-sm shrink-0" @click="closing = true">结案</button>
           </header>
 
           <p v-if="f.close_reason" class="border-b border-gray-100 bg-gray-50/60 px-6 py-3 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800/40 dark:text-dark-200">
@@ -40,9 +38,10 @@
 
           <!-- 输入区：结案后只能写内部备注 -->
           <footer class="card-footer" :class="mode === 'note' ? 'bg-amber-50/60 dark:bg-amber-500/5' : 'bg-gray-50/60 dark:bg-dark-800/40'">
-            <div class="mb-3">
+            <div v-if="isOpen(f.status)" class="mb-3">
               <Segmented v-model="mode" :options="modeOptions" />
             </div>
+            <p v-else class="mb-3 text-xs font-medium text-amber-700 dark:text-amber-300">已结案，只能写内部备注</p>
             <textarea
               v-model="body"
               rows="3"
@@ -53,15 +52,15 @@
               @keydown.ctrl.enter="send"
             />
             <div class="mt-3 flex items-end justify-between gap-2">
-              <ImagePicker v-model="images" :max="attachmentRule.max_count" :max-mb="attachmentRule.max_mb" admin />
+              <ImagePicker v-model="images" v-model:uploading="uploading" :max="attachmentRule.max_count" :max-mb="attachmentRule.max_mb" admin />
               <button
                 type="button"
-                class="btn"
+                class="btn shrink-0"
                 :class="mode === 'note' ? 'bg-amber-500 text-white hover:bg-amber-600' : 'btn-primary'"
-                :disabled="(!body.trim() && !images.length) || sending"
+                :disabled="(!body.trim() && !images.length) || sending || uploading > 0"
                 @click="send"
               >
-                {{ sending ? '发送中…' : mode === 'note' ? '保存备注' : '发送回复' }}
+                {{ sending ? '发送中…' : uploading > 0 ? '图片上传中…' : mode === 'note' ? '保存备注' : '发送回复' }}
               </button>
             </div>
           </footer>
@@ -72,7 +71,7 @@
           <Card title="分类">
             <div class="py-3">
               <div class="mb-2 text-xs text-gray-400">场景</div>
-              <Select :model-value="f.scenario" :options="scenarioOptions" searchable @update:model-value="(v) => reclass(String(v))" />
+              <Select :model-value="f.scenario" :options="scenarioOptions" searchable :disabled="saving" @update:model-value="(v) => reclass(String(v))" />
             </div>
             <div class="py-3">
               <div class="mb-2 text-xs text-gray-400">严重等级</div>
@@ -81,8 +80,9 @@
                   v-for="s in SEVERITIES"
                   :key="s"
                   type="button"
-                  class="flex items-center justify-center gap-1 rounded-lg border py-1.5 text-xs transition-colors"
+                  class="flex items-center justify-center gap-1 rounded-lg border py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   :class="f.severity === s ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-dark-600 dark:text-dark-200'"
+                  :disabled="saving"
                   @click="update({ severity: f.severity === s ? '' : s })"
                 >
                   <span class="h-1.5 w-1.5 rounded-full" :class="SEVERITY_META[s].dot" />
@@ -95,7 +95,7 @@
               <div v-if="f.tags?.length" class="mb-2 flex flex-wrap gap-1.5">
                 <span v-for="t in f.tags" :key="t" class="badge badge-gray gap-1">
                   {{ t }}
-                  <button type="button" class="text-gray-400 hover:text-red-500" :aria-label="`移除 ${t}`" @click="update({ tags: (f.tags ?? []).filter((x) => x !== t) })">×</button>
+                  <button type="button" class="text-gray-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50" :aria-label="`移除 ${t}`" :disabled="saving" @click="update({ tags: (f.tags ?? []).filter((x) => x !== t) })">×</button>
                 </span>
               </div>
               <Select
@@ -104,6 +104,7 @@
                 placeholder="添加标签"
                 searchable
                 creatable
+                :disabled="saving"
                 creatable-prefix="新标签："
                 search-placeholder="搜索或输入新标签"
                 data-testid="tag-select"
@@ -117,7 +118,7 @@
               {{ d.user.email }}
             </router-link>
             <Row label="余额">${{ d.user.balance.toFixed(2) }}</Row>
-            <Row v-if="d.user.subscriptions.length" label="订阅">{{ d.user.subscriptions.join('、') }}</Row>
+            <Row v-if="d.user.subscriptions.length" label="订阅" wrap>{{ d.user.subscriptions.join('、') }}</Row>
             <Row label="注册">{{ fullTime(d.user.registered_at).split(' ')[0] }}</Row>
             <Row label="反馈">
               <router-link :to="{ path: '/admin/feedback', query: { status: '', user: d.user.email } }" class="text-primary-600 hover:underline dark:text-primary-400">
@@ -153,8 +154,8 @@
           <Card v-if="d.related.length" title="关联">
             <router-link v-for="r in d.related" :key="r.id" :to="`/admin/feedback/${r.id}`" class="flex items-center gap-2 py-2 text-sm hover:text-primary-600">
               <span class="shrink-0 text-xs text-gray-400">{{ RELATION[r.relation] }}</span>
-              <span class="min-w-0 flex-1 truncate">#{{ r.id }} {{ r.summary }}</span>
-              <StatusPill :status="r.status" />
+              <span class="min-w-0 flex-1 truncate" :title="`#${r.id} ${r.summary}`">#{{ r.id }} {{ r.summary }}</span>
+              <StatusPill class="shrink-0" :status="r.status" />
             </router-link>
           </Card>
         </aside>
@@ -169,6 +170,7 @@
       :reward-enabled="rewardEnabled"
       :reward-default="rewardRule.default"
       :step="rewardRule.step"
+      :draft="mode === 'reply' ? body.trim() : ''"
       @close="closing = false"
       @confirm="close"
     />
@@ -177,9 +179,11 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Select from '@/components/common/Select.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -200,6 +204,13 @@ const d = ref<AdminDetail | null>(null)
 const error = ref('')
 const f = computed(() => d.value!.feedback)
 const ctx = computed(() => d.value?.feedback.context ?? {})
+const heading = computed(() => `${KIND_LABEL[f.value.kind]} · ${scenarioLabel(f.value.scenario)}`)
+const subtitle = computed(() => {
+  const x = f.value
+  const base = `#${x.id} · ${fullTime(x.created_at)}`
+  if (x.kind_user === x.kind && x.scenario_user === x.scenario) return base
+  return `${base} · 用户原选 ${KIND_LABEL[x.kind_user ?? x.kind]} / ${scenarioLabel(x.scenario_user ?? x.scenario)}`
+})
 const backTo = computed(() => (window.history.state?.back?.startsWith('/admin/feedback') ? window.history.state.back : '/admin/feedback'))
 
 // 场景下拉：同时列出问题和建议的场景；已结案时不能跨类型
@@ -215,36 +226,43 @@ const RELATION: Record<Related['relation'], string> = { prev: '上一条', next:
 
 type Mode = 'reply' | 'note'
 const mode = ref<Mode>('reply')
-const modeOptions = computed(() =>
-  d.value && !isOpen(d.value.feedback.status)
-    ? [{ value: 'note' as Mode, label: '内部备注' }]
-    : [
-        { value: 'reply' as Mode, label: '回复用户' },
-        { value: 'note' as Mode, label: '内部备注' }
-      ]
-)
-const placeholder = computed(() => ({ reply: '回复后状态变为「已回复」，用户补充后回到「待处理」', note: '只有管理员能看到' })[mode.value])
+// 已结案时不显示切换，只能写内部备注
+const modeOptions: { value: Mode; label: string }[] = [
+  { value: 'reply', label: '回复用户' },
+  { value: 'note', label: '内部备注' }
+]
+const placeholder = computed(() => ({ reply: '回复用户，Ctrl + Enter 发送', note: '仅管理员可见，Ctrl + Enter 保存' })[mode.value])
 const body = ref('')
 const images = ref<number[]>([])
+const uploading = ref(0)
 const sending = ref(false)
+const saving = ref(false)
 const closing = ref(false)
 const closeDialog = ref<InstanceType<typeof CloseDialog>>()
 const tagOptions = ref<string[]>([])
 
+// 别人先结案、自动结案等返回 409：刷新出真实状态，而不是停在旧界面里反复失败
+const isConflict = (e: unknown) => (e as { status?: number } | null)?.status === 409
+
 async function load() {
+  const id = Number(route.params.id)
   error.value = ''
   try {
-    const r = await adminApi.detail(Number(route.params.id))
+    const r = await adminApi.detail(id)
+    if (id !== Number(route.params.id)) return // 已切到别的反馈，丢弃旧响应
     d.value = r.detail
     rewardEnabled.value = r.reward_enabled
     if (!isOpen(r.detail.feedback.status)) mode.value = 'note'
   } catch (e) {
-    error.value = extractApiErrorMessage(e, '加载失败')
+    if (id !== Number(route.params.id)) return
+    const msg = extractApiErrorMessage(e, '加载失败')
+    if (d.value) appStore.showError(msg)
+    else error.value = msg
   }
 }
 
 async function send() {
-  if ((!body.value.trim() && !images.value.length) || sending.value) return
+  if ((!body.value.trim() && !images.value.length) || sending.value || uploading.value > 0) return
   sending.value = true
   try {
     await adminApi.message(f.value.id, mode.value, body.value, images.value)
@@ -254,17 +272,26 @@ async function send() {
     pendingBadge(true)
   } catch (e) {
     appStore.showError(extractApiErrorMessage(e, '发送失败'))
+    if (isConflict(e)) await load()
   } finally {
     sending.value = false
   }
 }
 
+// 标签是整体替换的：保存期间锁住控件，并先改本地数据，下一次操作基于最新状态计算
 async function update(input: UpdateInput) {
+  if (saving.value || !d.value) return
+  saving.value = true
+  const id = d.value.feedback.id
+  Object.assign(d.value.feedback, input)
   try {
-    await adminApi.update(f.value.id, input)
-    await load()
+    await adminApi.update(id, input)
   } catch (e) {
     appStore.showError(extractApiErrorMessage(e, '保存失败'))
+  } finally {
+    // 成功时取回时间线事件，失败时回滚本地修改
+    if (d.value?.feedback.id === id) await load()
+    saving.value = false
   }
 }
 
@@ -288,12 +315,21 @@ async function close(req: CloseRequest) {
   try {
     await adminApi.close(f.value.id, req)
     closing.value = false
+    // 回复草稿已作为「给用户的话」带进结案；结案后不能再回复，不能让它留下来被当成备注保存
+    if (mode.value === 'reply') {
+      body.value = ''
+      images.value = []
+    }
     appStore.showSuccess('已结案')
     pendingBadge(true)
     await load()
   } catch (e) {
     closeDialog.value?.done()
     appStore.showError(extractApiErrorMessage(e, '结案失败'))
+    if (isConflict(e)) {
+      closing.value = false
+      await load()
+    }
   }
 }
 
@@ -327,13 +363,14 @@ const Card = defineComponent({
   }
 })
 
+// wrap：长值换行显示（如订阅列表），否则单行截断
 const Row = defineComponent({
-  props: { label: { type: String, required: true } },
+  props: { label: { type: String, required: true }, wrap: Boolean },
   setup(p, { slots }) {
     return () =>
-      h('div', { class: 'flex items-center gap-3 py-2 text-sm' }, [
+      h('div', { class: ['flex gap-3 py-2 text-sm', p.wrap ? 'items-start' : 'items-center'] }, [
         h('span', { class: 'w-20 shrink-0 text-gray-500 dark:text-dark-400' }, p.label),
-        h('div', { class: 'min-w-0 flex-1 truncate text-right text-gray-800 dark:text-dark-100' }, slots.default?.())
+        h('div', { class: ['min-w-0 flex-1 text-right text-gray-800 dark:text-dark-100', p.wrap ? 'break-words' : 'truncate'] }, slots.default?.())
       ])
   }
 })
@@ -344,9 +381,20 @@ watch(
   () => route.params.id,
   (id) => {
     if (!id) return
+    // 同一个组件实例会被复用（关联、#id 链接），草稿不能带到另一条反馈
     d.value = null
+    body.value = ''
+    images.value = []
+    mode.value = 'reply'
+    closing.value = false
     void load()
   },
   { immediate: true }
 )
+
+// 有没发出的内容时，离开或跳到另一条反馈前确认
+const leaveGuard = () =>
+  !(body.value.trim() || images.value.length || uploading.value > 0) || window.confirm(mode.value === 'note' ? '备注还没保存，确定离开？' : '回复还没发送，确定离开？')
+onBeforeRouteLeave(leaveGuard)
+onBeforeRouteUpdate((to, from) => to.params.id === from.params.id || leaveGuard())
 </script>

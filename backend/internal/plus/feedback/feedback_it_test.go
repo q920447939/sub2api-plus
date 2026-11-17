@@ -314,3 +314,25 @@ func TestITAutoCloseAndRate(t *testing.T) {
 		t.Fatalf("tags=%v", tags)
 	}
 }
+
+func TestITMetaKeepsDisabledScenarios(t *testing.T) {
+	_, svc := openIT(t)
+	ctx := context.Background()
+	cfg, ver, err := svc.AdminConfig(ctx)
+	must(t, err)
+	cfg.Scenarios[0].Enabled = false
+	cfg.Enabled = false
+	_, err = svc.SaveConfig(ctx, cfg, ver)
+	must(t, err)
+	m, err := svc.Meta(ctx)
+	must(t, err)
+	if m.Enabled || len(m.Scenarios) != len(cfg.Scenarios) {
+		t.Fatalf("总开关关闭时仍要返回全部场景名称: enabled=%v n=%d", m.Enabled, len(m.Scenarios))
+	}
+	if m.Scenarios[0].Enabled || !m.Scenarios[1].Enabled || m.AskTimeoutDays != cfg.AskTimeoutDays {
+		t.Fatalf("enabled 标记或超时天数不对: %+v", m.Scenarios[0])
+	}
+	if from := svc.RangeStart(7); time.Since(from) > 7*24*time.Hour || time.Since(from) < 6*24*time.Hour {
+		t.Fatalf("RangeStart(7)=%v", from)
+	}
+}

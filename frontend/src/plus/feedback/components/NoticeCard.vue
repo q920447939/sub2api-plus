@@ -1,18 +1,30 @@
-<!-- [plus] 反馈中心公告：限制高度，图片缩小显示，超出时可展开；避免挤占下方列表 -->
+<!-- [plus] 反馈中心公告：默认展开；内容较长时可以收起（按公告内容记住，换了新公告会重新展开） -->
 <template>
-  <div class="fb-notice" :class="tone">
-    <div ref="box" class="relative overflow-hidden transition-[max-height] duration-200" :style="{ maxHeight: expanded ? 'none' : `${collapsedPx}px` }">
+  <div class="fb-notice" :class="tone" data-testid="notice">
+    <div
+      ref="box"
+      class="relative overflow-hidden"
+      :class="collapsed ? 'fb-notice-collapsed' : ''"
+      :style="collapsed ? { maxHeight: `${collapsedPx}px` } : undefined"
+    >
       <MarkdownView :source="source" />
-      <div v-if="overflow && !expanded" class="fb-notice-fade pointer-events-none absolute inset-x-0 bottom-0 h-10" />
     </div>
-    <button v-if="overflow" type="button" class="mt-1 text-xs font-medium text-primary-600 hover:underline dark:text-primary-400" @click="expanded = !expanded">
-      {{ expanded ? '收起' : '展开全部' }}
+    <button
+      v-if="collapsible"
+      type="button"
+      class="mt-1 inline-flex items-center gap-0.5 text-xs font-medium text-primary-600 hover:underline dark:text-primary-400"
+      :aria-expanded="!collapsed"
+      @click="toggle"
+    >
+      {{ collapsed ? '展开全部' : '收起' }}
+      <Icon :name="collapsed ? 'chevronDown' : 'chevronUp'" size="xs" />
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import Icon from '@/components/icons/Icon.vue'
 import MarkdownView from './MarkdownView.vue'
 
 const props = withDefaults(defineProps<{ source: string; tone?: string; collapsedPx?: number }>(), {
@@ -20,13 +32,31 @@ const props = withDefaults(defineProps<{ source: string; tone?: string; collapse
   collapsedPx: 120
 })
 
+const STORE_KEY = 'plus_feedback_notice_collapsed'
+
+// 简单哈希：公告内容变了就是一份新公告
+function hash(s: string): string {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0
+  return String(h)
+}
+const noticeId = computed(() => hash(props.source))
+
 const box = ref<HTMLElement>()
-const expanded = ref(false)
-const overflow = ref(false)
+const userCollapsed = ref(localStorage.getItem(STORE_KEY) === noticeId.value)
+const tall = ref(false) // 内容高度超过折叠高度，才需要「收起」
+const collapsible = computed(() => tall.value)
+const collapsed = computed(() => userCollapsed.value && tall.value)
 
 function measure() {
-  const el = box.value
-  if (el) overflow.value = el.scrollHeight > props.collapsedPx + 4
+  const inner = box.value?.firstElementChild as HTMLElement | undefined
+  if (inner) tall.value = inner.scrollHeight > props.collapsedPx + 8
+}
+
+function toggle() {
+  userCollapsed.value = !collapsed.value
+  if (userCollapsed.value) localStorage.setItem(STORE_KEY, noticeId.value)
+  else localStorage.removeItem(STORE_KEY)
 }
 
 // 图片异步加载完才知道真实高度，用 ResizeObserver 跟踪内容尺寸
@@ -43,17 +73,16 @@ onBeforeUnmount(() => ro?.disconnect())
 watch(
   () => props.source,
   () => {
-    expanded.value = false
+    userCollapsed.value = localStorage.getItem(STORE_KEY) === noticeId.value
     void nextTick(measure)
   }
 )
 </script>
 
 <style scoped>
-.fb-notice-fade {
-  background: linear-gradient(to bottom, transparent, rgb(255 255 255));
-}
-:global(.dark) .fb-notice-fade {
-  background: linear-gradient(to bottom, transparent, rgb(31 41 55));
+/* 用遮罩渐隐而不是盖一层白色渐变，任何底色上都自然 */
+.fb-notice-collapsed {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
 }
 </style>

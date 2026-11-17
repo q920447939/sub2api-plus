@@ -10,14 +10,15 @@ import (
 	"time"
 )
 
-// UserScenario 用户端看到的场景（不含预选规则以外的管理字段）
+// UserScenario 用户端看到的场景。停用的也返回（Enabled=false），历史反馈要能显示名称；提交时只能选启用的
 type UserScenario struct {
-	Key    string  `json:"key"`
-	Kind   Kind    `json:"kind"`
-	Label  string  `json:"label"`
-	Icon   string  `json:"icon"`
-	Hint   string  `json:"hint"`
-	Fields []Field `json:"fields"`
+	Key     string  `json:"key"`
+	Kind    Kind    `json:"kind"`
+	Label   string  `json:"label"`
+	Icon    string  `json:"icon"`
+	Hint    string  `json:"hint"`
+	Fields  []Field `json:"fields"`
+	Enabled bool    `json:"enabled"`
 }
 
 // Meta 用户端初始化数据
@@ -30,6 +31,8 @@ type Meta struct {
 	MaxImageMB  int            `json:"max_image_mb"`
 	ContentMin  int            `json:"content_min"`
 	ContentMax  int            `json:"content_max"`
+	// AskTimeoutDays 管理员回复后用户多少天没回应会自动结案，0 = 不自动结案
+	AskTimeoutDays int `json:"ask_timeout_days"`
 }
 
 func (s *Service) Meta(ctx context.Context) (*Meta, error) {
@@ -41,17 +44,17 @@ func (s *Service) Meta(ctx context.Context) (*Meta, error) {
 		Enabled: cfg.Enabled, FloatButton: cfg.Enabled && cfg.FloatButton,
 		MaxImages: cfg.Attachments.MaxCount, MaxImageMB: cfg.Attachments.MaxMB,
 		ContentMin: ContentMin, ContentMax: ContentMax, Scenarios: []UserScenario{},
+		AskTimeoutDays: cfg.AskTimeoutDays,
+	}
+	// 总开关关闭时也返回场景名称，用户还能看懂自己的历史反馈
+	for _, sc := range cfg.Scenarios {
+		m.Scenarios = append(m.Scenarios, UserScenario{Key: sc.Key, Kind: sc.Kind, Label: sc.Label, Icon: sc.Icon, Hint: sc.Hint, Fields: sc.Fields, Enabled: sc.Enabled})
 	}
 	if !cfg.Enabled {
 		return m, nil
 	}
 	if cfg.Notice.Enabled {
 		m.Notice = strings.TrimSpace(cfg.Notice.Markdown)
-	}
-	for _, sc := range cfg.Scenarios {
-		if sc.Enabled {
-			m.Scenarios = append(m.Scenarios, UserScenario{Key: sc.Key, Kind: sc.Kind, Label: sc.Label, Icon: sc.Icon, Hint: sc.Hint, Fields: sc.Fields})
-		}
 	}
 	return m, nil
 }

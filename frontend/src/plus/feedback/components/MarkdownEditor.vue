@@ -1,22 +1,24 @@
 <!-- [plus] Markdown 编辑器：常用格式工具栏 + 编辑 / 预览切换；宽屏时左右并排实时预览 -->
 <template>
   <div class="overflow-hidden rounded-xl border border-gray-200 bg-white focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/20 dark:border-dark-600 dark:bg-dark-800">
-    <div class="flex items-center gap-0.5 border-b border-gray-100 px-2 py-1.5 dark:border-dark-700">
-      <button
-        v-for="a in actions"
-        :key="a.key"
-        type="button"
-        class="flex h-8 min-w-[32px] items-center justify-center rounded-lg px-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-30 dark:text-dark-300 dark:hover:bg-dark-700 dark:hover:text-white"
-        :class="a.cls"
-        :title="a.title"
-        :aria-label="a.title"
-        :disabled="tab === 'preview'"
-        @click="a.run"
-      >
-        {{ a.text }}
-      </button>
-      <span class="flex-1" />
-      <div class="flex rounded-lg bg-gray-100 p-0.5 text-xs dark:bg-dark-700 lg:hidden">
+    <div class="flex items-center border-b border-gray-100 px-2 py-1.5 dark:border-dark-700">
+      <!-- 窄屏放不下时格式按钮横向滚动，编辑 / 预览切换始终可见 -->
+      <div class="scrollbar-hide flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+        <button
+          v-for="a in actions"
+          :key="a.key"
+          type="button"
+          class="flex h-8 min-w-[32px] shrink-0 items-center justify-center rounded-lg px-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-30 dark:text-dark-300 dark:hover:bg-dark-700 dark:hover:text-white"
+          :class="a.cls"
+          :title="a.title"
+          :aria-label="a.title"
+          :disabled="tab === 'preview'"
+          @click="a.run"
+        >
+          {{ a.text }}
+        </button>
+      </div>
+      <div class="ml-1 flex shrink-0 rounded-lg bg-gray-100 p-0.5 text-xs dark:bg-dark-700 lg:hidden">
         <button
           v-for="t in tabs"
           :key="t.value"

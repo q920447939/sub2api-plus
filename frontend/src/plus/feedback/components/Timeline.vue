@@ -49,7 +49,7 @@ const extras = computed(() => {
   const extra = props.feedback.extra ?? {}
   const defined = scenario.value?.fields ?? []
   const out = defined.filter((f) => extra[f.key]).map((f) => ({ label: f.label, value: extra[f.key] }))
-  for (const [k, v] of Object.entries(extra)) if (!defined.some((f) => f.key === k)) out.push({ label: k, value: v })
+  for (const [k, v] of Object.entries(extra)) if (!defined.some((f) => f.key === k)) out.push({ label: '补充信息', value: v }) // 场景或字段已被删除：不露出内部 key
   return out
 })
 
@@ -64,7 +64,7 @@ function who(m: Message): string {
 }
 
 const linkTo = (id: number) => (props.viewer === 'admin' ? `/admin/feedback/${id}` : `/feedback/${id}`)
-const scenarioLabel = (key?: string) => props.scenarios.find((s) => s.key === key)?.label ?? key ?? ''
+const scenarioLabel = (key?: string) => props.scenarios.find((s) => s.key === key)?.label ?? '其他场景'
 
 type Part = { text?: string; id?: number }
 

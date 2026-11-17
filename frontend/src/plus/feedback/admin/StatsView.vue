@@ -3,12 +3,15 @@
   <AppLayout>
     <div class="space-y-4">
       <div class="flex justify-end">
-        <Select v-model="days" :options="rangeOptions" class="w-32" />
+        <Select :model-value="days" :options="rangeOptions" class="w-32" :disabled="loading" data-testid="stats-range" @update:model-value="(v) => pick(Number(v))" />
       </div>
 
-      <div v-if="!st" class="card p-16 text-center text-sm text-gray-400">{{ error || '正在加载…' }}</div>
+      <div v-if="!st" class="card">
+        <EmptyState v-if="error" title="加载失败" :description="error" action-text="重试" :action-icon="false" @action="load" />
+        <div v-else class="flex justify-center py-16"><LoadingSpinner /></div>
+      </div>
 
-      <template v-else>
+      <div v-else class="space-y-4 transition-opacity" :class="loading && 'pointer-events-none opacity-60'" :aria-busy="loading">
         <!-- 概览 -->
         <section class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Tile label="新增" :value="o.total" :sub="`问题 ${o.issues} · 建议 ${o.suggestions}`" />
@@ -26,13 +29,13 @@
             <router-link
               v-for="s in byKind[k]"
               :key="s.scenario"
-              :to="{ path: '/admin/feedback', query: { status: '', kind: k, scenario: s.scenario } }"
+              :to="drill({ kind: k, scenario: s.scenario })"
               class="group block py-2"
             >
               <div class="mb-1 flex items-center gap-2 text-sm">
                 <span>{{ scenarioIcon(s.scenario) }}</span>
                 <span class="flex-1 truncate text-gray-700 group-hover:text-primary-600 dark:text-dark-100">{{ scenarioLabel(s.scenario) }}</span>
-                <span v-if="s.reclassified" class="text-[11px] text-amber-500" title="被管理员改过场景的条数">改 {{ s.reclassified }}</span>
+                <span v-if="s.reclassified" class="text-[11px] text-amber-500" title="被管理员改过场景的条数">改场景 {{ s.reclassified }}</span>
                 <span class="w-8 text-right font-semibold tabular-nums">{{ s.total }}</span>
               </div>
               <div class="flex h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700" :style="{ width: `${Math.max(6, (s.total / maxScenario) * 100)}%` }">
@@ -62,7 +65,7 @@
                   <td v-for="c in heatCols" :key="c.key" class="p-1">
                     <router-link
                       v-if="r.cells[c.key]?.count"
-                      :to="{ path: '/admin/feedback', query: { status: '', scenario: r.scenario, severity: c.key || 'none' } }"
+                      :to="drill({ scenario: r.scenario, severity: c.key || 'none' })"
                       class="flex h-9 items-center justify-center rounded-lg text-xs font-semibold tabular-nums text-white transition-transform hover:scale-105"
                       :class="c.cell"
                       :style="{ opacity: 0.35 + 0.65 * (r.cells[c.key].count / maxHeat) }"
@@ -80,21 +83,13 @@
 
         <!-- 趋势 -->
         <Panel title="每日趋势">
-          <div class="flex h-40 items-end gap-[3px]">
-            <div v-for="p in st.trend" :key="p.date" class="group relative flex h-full flex-1 flex-col justify-end">
-              <div class="pointer-events-none absolute -top-1 left-1/2 z-10 hidden -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg bg-gray-900 px-2 py-1 text-[11px] text-white group-hover:block">
-                {{ p.date.slice(5) }} · 问题 {{ p.issues }} · 建议 {{ p.suggestions }} · 结案 {{ p.closed }}
-              </div>
-              <div class="w-full rounded-t-sm bg-violet-400" :style="{ height: barH(p.suggestions) }" />
-              <div class="w-full bg-sky-400" :class="p.suggestions ? '' : 'rounded-t-sm'" :style="{ height: barH(p.issues) }" />
-              <div class="absolute bottom-0 left-0 right-0 border-t-2 border-emerald-500" :style="{ bottom: barH(p.closed) }" :class="p.closed ? '' : 'hidden'" />
+          <p v-if="trendEmpty" class="py-6 text-center text-sm text-gray-400">暂无</p>
+          <template v-else>
+            <div class="h-40 pt-2">
+              <Chart type="bar" :data="trendData" :options="trendOptions" />
             </div>
-          </div>
-          <div class="mt-2 flex justify-between text-[11px] text-gray-400">
-            <span>{{ st.trend[0]?.date.slice(5) }}</span>
-            <span>{{ st.trend[st.trend.length - 1]?.date.slice(5) }}</span>
-          </div>
-          <Legend :items="[['bg-sky-400', '问题'], ['bg-violet-400', '建议'], ['bg-emerald-500', '结案']]" />
+            <Legend :items="[['bg-sky-400', '问题'], ['bg-violet-400', '建议'], ['bg-emerald-500', '结案']]" />
+          </template>
         </Panel>
 
         <section class="grid gap-4 lg:grid-cols-2">
@@ -102,12 +97,14 @@
           <Panel title="建议池">
             <p v-if="!st.pool.length" class="py-6 text-center text-sm text-gray-400">暂无</p>
             <router-link v-for="p in st.pool" :key="p.id" :to="`/admin/feedback/${p.id}`" class="flex items-center gap-3 py-2.5 text-sm hover:text-primary-600">
-              <span class="w-8 shrink-0 text-center text-base font-semibold tabular-nums text-primary-600 dark:text-primary-400" title="影响人数">{{ p.impact }}</span>
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-gray-800 dark:text-dark-100">{{ p.summary }}</span>
                 <span class="text-xs text-gray-400">{{ scenarioLabel(p.scenario) }}</span>
               </span>
-              <span v-if="p.severity" class="h-2 w-2 shrink-0 rounded-full" :class="SEVERITY_META[p.severity].dot" />
+              <span class="shrink-0 text-xs text-gray-400" title="影响人数">
+                影响 <span class="text-sm font-semibold tabular-nums text-primary-600 dark:text-primary-400">{{ p.impact }}</span>
+              </span>
+              <span v-if="p.severity" class="h-2 w-2 shrink-0 rounded-full" :class="SEVERITY_META[p.severity].dot" :title="SEVERITY_META[p.severity].label" />
               <StatusPill :status="p.status" />
             </router-link>
           </Panel>
@@ -118,60 +115,118 @@
             <router-link
               v-for="u in st.users.slice(0, 15)"
               :key="u.user_id"
-              :to="{ path: '/admin/feedback', query: { status: '', user: u.email } }"
-              class="block py-2.5 hover:text-primary-600"
+              :to="drill({ user: u.email })"
+              class="block py-2.5 text-sm hover:text-primary-600"
             >
-              <div class="flex items-center gap-2 text-sm">
+              <div class="flex items-center gap-2">
                 <span class="min-w-0 flex-1 truncate text-gray-800 dark:text-dark-100">{{ u.email }}</span>
                 <span class="text-xs text-gray-400">问题 {{ u.issues }} · 建议 {{ u.suggestions }}</span>
-                <span class="w-14 text-right text-xs tabular-nums" :class="rate(u) >= 50 ? 'text-emerald-600' : 'text-gray-400'" title="有效率">{{ rate(u) }}%</span>
+                <span class="w-16 text-right text-xs tabular-nums" :class="rate(u) >= 50 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'" title="已解决或已采纳的占比">有效 {{ rate(u) }}%</span>
                 <span v-if="u.reward" class="w-12 text-right text-xs font-semibold text-violet-600 dark:text-violet-300">+{{ u.reward }}</span>
               </div>
-              <div class="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
-                <span
-                  v-for="(n, key) in u.scenarios"
-                  :key="key"
-                  :style="{ width: pct(n, u.total), background: colorOf(String(key)) }"
-                  :title="`${scenarioLabel(String(key))} ${n}`"
-                />
+              <!-- 这个人的反馈分布在哪些场景：色条看比例，下面直接写出前三个场景，不用悬停 -->
+              <div class="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700" data-testid="user-mix">
+                <span v-for="m in mixOf(u)" :key="m.key" :style="{ width: pct(m.n, u.total), background: m.color }" />
               </div>
+              <p class="mt-1 truncate text-[11px] text-gray-400 dark:text-dark-400">
+                <span v-for="(m, i) in mixOf(u).slice(0, 3)" :key="m.key">
+                  <template v-if="i">　</template><span class="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" :style="{ background: m.color }" />{{ scenarioLabel(m.key) }} {{ m.n }}
+                </span>
+                <template v-if="mixOf(u).length > 3">　等 {{ mixOf(u).length }} 个场景</template>
+              </p>
             </router-link>
           </Panel>
         </section>
-      </template>
+      </div>
     </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, ref, watch } from 'vue'
-import { RouterLink, type RouteLocationRaw } from 'vue-router'
+import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
+import {
+  Chart as ChartJS,
+  BarController,
+  BarElement,
+  CategoryScale,
+  LineController,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Tooltip,
+  type ChartData,
+  type ChartOptions
+} from 'chart.js'
+import { Chart } from 'vue-chartjs'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import Select from '@/components/common/Select.vue'
+import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminApi, type Kind, type Stats } from '../api'
 import { SEVERITIES, SEVERITY_META } from '../format'
+import { FEEDBACK_ADMIN_PATH } from '../routes'
 import { allScenarios, loadAdminScenarios, scenarioIcon, scenarioLabel } from './shared'
-import Select from '@/components/common/Select.vue'
 import StatusPill from '../components/StatusPill.vue'
 
-const days = ref(30)
-const rangeOptions = [
-  { value: 7, label: '7 天' },
-  { value: 30, label: '30 天' },
-  { value: 90, label: '90 天' }
-]
+ChartJS.register(BarController, BarElement, LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip)
+
+const route = useRoute()
+const router = useRouter()
+const appStore = useAppStore()
+
+const here = route.name
+const RANGES = [7, 30, 90]
+const rangeOptions = RANGES.map((d) => ({ value: d, label: `${d} 天` }))
+const fromUrl = Number(route.query.days)
+/** 选择器上的范围 */
+const days = ref(RANGES.includes(fromUrl) ? fromUrl : 30)
+/** 当前显示的数据对应的范围（加载失败时选择器退回到它） */
+const shownDays = ref(days.value)
 const st = ref<Stats | null>(null)
 const error = ref('')
+const loading = ref(false)
 const o = computed(() => st.value!.overview)
 
+// 只采用最后一次请求的结果，快速切换范围时旧响应不会覆盖新的
+let seq = 0
 async function load() {
+  const my = ++seq
+  loading.value = true
   error.value = ''
   try {
-    st.value = await adminApi.stats(days.value)
+    const r = await adminApi.stats(days.value)
+    if (my !== seq) return
+    st.value = r
+    shownDays.value = days.value
+    if (route.name === here && String(route.query.days ?? 30) !== String(days.value)) void router.replace({ query: { ...route.query, days: String(days.value) } })
   } catch (e) {
-    error.value = extractApiErrorMessage(e, '加载失败')
+    if (my !== seq) return
+    const msg = extractApiErrorMessage(e, '加载失败')
+    if (st.value) {
+      appStore.showError(msg)
+      days.value = shownDays.value
+    } else {
+      error.value = msg
+    }
+  } finally {
+    if (my === seq) loading.value = false
   }
 }
+
+function pick(v: number) {
+  if (!RANGES.includes(v) || v === days.value) return
+  days.value = v
+  void load()
+}
+
+// 下钻到反馈处理：除待处理和建议池外的数字都只算所选范围内提交的，列表带上同样的范围
+const drill = (query: Record<string, string>): RouteLocationRaw => ({
+  path: FEEDBACK_ADMIN_PATH,
+  query: { status: 'all', ...query, days: String(shownDays.value) }
+})
 
 const byKind = computed(() => {
   const out: Record<Kind, Stats['scenarios']> = { issue: [], suggestion: [] }
@@ -194,21 +249,66 @@ const heatRows = computed(() => {
 })
 const maxHeat = computed(() => Math.max(1, ...(st.value?.severity ?? []).map((c) => c.count)))
 
-const maxTrend = computed(() => Math.max(1, ...(st.value?.trend ?? []).map((p) => Math.max(p.issues + p.suggestions, p.closed))))
-const barH = (n: number) => `${(n / maxTrend.value) * 100}%`
+// 趋势：问题/建议堆叠柱 + 结案折线（颜色与下方图例一致：sky-400 / violet-400 / emerald-500）
+const trend = computed(() => st.value?.trend ?? [])
+const trendEmpty = computed(() => !trend.value.some((p) => p.issues || p.suggestions || p.closed))
+const trendData = computed(
+  () =>
+    ({
+      labels: trend.value.map((p) => p.date.slice(5)),
+      datasets: [
+        { type: 'bar', label: '问题', data: trend.value.map((p) => p.issues), backgroundColor: '#38bdf8', stack: 'new', order: 2 },
+        { type: 'bar', label: '建议', data: trend.value.map((p) => p.suggestions), backgroundColor: '#a78bfa', stack: 'new', order: 2 },
+        {
+          type: 'line',
+          label: '结案',
+          data: trend.value.map((p) => p.closed),
+          borderColor: '#10b981',
+          backgroundColor: '#10b981',
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          tension: 0.3,
+          stack: 'closed',
+          order: 1
+        }
+      ]
+    }) as ChartData
+)
+const trendOptions = computed((): ChartOptions => {
+  const dark = document.documentElement.classList.contains('dark')
+  const text = dark ? '#9ca3af' : '#6b7280'
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+    scales: {
+      x: { stacked: true, grid: { display: false }, ticks: { color: text, font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+      y: { stacked: true, beginAtZero: true, grid: { color: dark ? '#374151' : '#f3f4f6' }, ticks: { color: text, font: { size: 10 }, precision: 0 } }
+    }
+  }
+})
+
 const pct = (n: number, total: number) => `${total ? (n / total) * 100 : 0}%`
+
+// 场景配色：按场景在配置里的顺序取色，同一场景在各处颜色一致
+const PALETTE = ['#38bdf8', '#a78bfa', '#34d399', '#fbbf24', '#f87171', '#f472b6', '#60a5fa', '#2dd4bf', '#fb923c', '#a3e635', '#c084fc', '#94a3b8']
+const colorOf = (key: string) => {
+  const i = allScenarios.value.findIndex((s) => s.key === key)
+  return PALETTE[(i < 0 ? PALETTE.length - 1 : i) % PALETTE.length]
+}
+/** 某个用户的场景分布，按条数从多到少 */
+const mixOf = (u: Stats['users'][number]) =>
+  Object.entries(u.scenarios ?? {})
+    .map(([key, n]) => ({ key, n, color: colorOf(key) }))
+    .sort((a, b) => b.n - a.n)
 const rate = (u: Stats['users'][number]) => (u.total ? Math.round((u.accepted / u.total) * 100) : 0)
 const formatHours = (h: number) => {
   const min = h * 60
   if (min < 1) return '<1 分'
   if (h < 1) return `${Math.round(min)} 分`
   return h < 48 ? `${h.toFixed(1)} 时` : `${(h / 24).toFixed(1)} 天`
-}
-
-const PALETTE = ['#38bdf8', '#a78bfa', '#34d399', '#fbbf24', '#f87171', '#f472b6', '#60a5fa', '#2dd4bf', '#fb923c', '#a3e635', '#c084fc', '#94a3b8']
-const colorOf = (key: string) => {
-  const i = allScenarios.value.findIndex((s) => s.key === key)
-  return PALETTE[(i < 0 ? 11 : i) % PALETTE.length]
 }
 
 const Tile = defineComponent({
@@ -247,9 +347,10 @@ const Legend = defineComponent({
   }
 })
 
-watch(days, load)
 onMounted(() => {
   void loadAdminScenarios()
   void load()
 })
+// 离开页面后，还在路上的请求结果不再处理（避免改写别的页面的 URL）
+onBeforeUnmount(() => seq++)
 </script>

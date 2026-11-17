@@ -1,12 +1,7 @@
 <!-- [plus] 管理端「反馈管理 · 设置」 -->
 <template>
   <AppLayout>
-    <div class="space-y-6 pb-16">
-      <div class="flex items-center justify-end gap-3">
-        <span v-if="dirty" class="text-sm text-amber-600 dark:text-amber-400">有未保存的修改</span>
-        <button type="button" class="btn btn-primary" :disabled="!cfg || saving || !dirty" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
-      </div>
-
+    <div ref="page" class="space-y-6 pb-16">
       <div v-if="!cfg" class="card p-16 text-center text-sm text-gray-400">{{ error || '正在加载…' }}</div>
 
       <template v-else>
@@ -34,7 +29,7 @@
               <SectionTitle>积分</SectionTitle>
               <Group>
                 <Line title="默认积分" :desc="rewardOn ? '已采纳的建议结案时预填' : '积分模块未启用，暂时不能发放'"><Num v-model="cfg.reward.default" /></Line>
-                <Line title="每次加减"><Num v-model="cfg.reward.step" /></Line>
+                <Line title="每次加减"><Num v-model="cfg.reward.step" :min="1" /></Line>
               </Group>
             </section>
           </div>
@@ -58,23 +53,34 @@
                   <Toggle v-model="s.enabled" />
                 </div>
               </Group>
+              <p v-if="scenarioError" class="input-error-text mt-1.5 px-1" data-testid="scenario-error">{{ KIND_LABEL[scenarioError] }}至少启用一个场景</p>
             </section>
 
             <section>
               <SectionTitle>规则</SectionTitle>
               <Group>
-                <Line title="每人每天最多"><Num v-model="cfg.limits.daily_max" suffix="条" /></Line>
-                <Line title="提交间隔"><Num v-model="cfg.limits.interval_seconds" suffix="秒" /></Line>
-                <Line title="同时处理中最多"><Num v-model="cfg.limits.open_max" suffix="条" /></Line>
-                <Line title="每次最多图片"><Num v-model="cfg.attachments.max_count" suffix="张" /></Line>
-                <Line title="单张图片上限"><Num v-model="cfg.attachments.max_mb" suffix="MB" /></Line>
-                <Line title="回复后自动结案" desc="回复后用户多少天没回应就自动结案，0 表示不自动结案"><Num v-model="cfg.ask_timeout_days" suffix="天" /></Line>
+                <Line title="每人每天最多" desc="0 为不限"><Num v-model="cfg.limits.daily_max" suffix="条" /></Line>
+                <Line title="提交间隔" desc="0 为不限"><Num v-model="cfg.limits.interval_seconds" suffix="秒" /></Line>
+                <Line title="同时处理中最多" desc="0 为不限"><Num v-model="cfg.limits.open_max" suffix="条" /></Line>
+                <Line title="每次最多图片" desc="0 为不允许上传"><Num v-model="cfg.attachments.max_count" suffix="张" :max="9" /></Line>
+                <Line title="单张图片上限"><Num v-model="cfg.attachments.max_mb" suffix="MB" :min="1" :max="20" /></Line>
+                <Line title="回复后自动结案" desc="回复后用户多少天没回应就自动结案，0 表示不自动结案"><Num v-model="cfg.ask_timeout_days" suffix="天" :max="365" /></Line>
               </Group>
             </section>
 
           </div>
         </div>
       </template>
+
+      <!-- 吸底保存条：页面较长时也能看到未保存提示和保存按钮 -->
+      <div
+        v-if="cfg"
+        class="sticky bottom-3 z-20 ml-auto flex w-fit items-center gap-3 rounded-full border border-white/80 bg-white/90 p-1.5 shadow-lg backdrop-blur-xl dark:border-dark-600/60 dark:bg-dark-900/85"
+        :class="dirty ? 'pl-4' : ''"
+      >
+        <span v-if="dirty" class="text-sm text-amber-600 dark:text-amber-400">有未保存的修改</span>
+        <button type="button" class="btn btn-primary" :disabled="saving || !dirty" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
+      </div>
     </div>
 
     <ScenarioDialog :scenario="editing" :is-new="editingNew" @close="editing = null" @save="saveScenario" @remove="removeScenario" />
@@ -111,6 +117,14 @@ const kindTab = ref<Kind>('issue')
 const kindOptions = (['issue', 'suggestion'] as Kind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))
 const tabScenarios = computed(() => (cfg.value?.scenarios ?? []).filter((s) => s.kind === kindTab.value))
 
+/** 开启反馈时，问题和建议都至少要有一个启用的场景（与后端校验一致） */
+const scenarioError = computed<Kind | undefined>(() => {
+  const c = cfg.value
+  if (!c?.enabled) return undefined
+  return (['issue', 'suggestion'] as Kind[]).find((k) => !c.scenarios.some((s) => s.kind === k && s.enabled))
+})
+const page = ref<HTMLElement>()
+
 async function load() {
   try {
     const r = await adminApi.config()
@@ -125,6 +139,13 @@ async function load() {
 
 async function save() {
   if (!cfg.value) return
+  // 有标红的项先定位过去，不提交
+  const bad = page.value?.querySelector<HTMLElement>('.input-error, .input-error-text')
+  if (bad) {
+    bad.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    if (bad.matches('input')) bad.focus({ preventScroll: true })
+    return
+  }
   saving.value = true
   try {
     version.value = await adminApi.saveConfig(cfg.value, version.value)
@@ -221,9 +242,19 @@ const SectionTitle = defineComponent({
 })
 
 const Num = defineComponent({
-  props: { modelValue: { type: Number, required: true }, suffix: { type: String, default: '' } },
+  props: {
+    modelValue: { type: Number, required: true },
+    suffix: { type: String, default: '' },
+    min: { type: Number, default: 0 },
+    max: { type: Number, default: undefined }
+  },
   emits: ['update:modelValue'],
   setup(p, { emit }) {
+    const error = computed(() => {
+      const v = p.modelValue
+      if (v >= p.min && (p.max == null || v <= p.max)) return ''
+      return p.max == null ? `不能小于 ${p.min}` : `范围 ${p.min}–${p.max}`
+    })
     return () =>
       h('div', { class: 'w-32 shrink-0' }, [
         h(
@@ -231,6 +262,7 @@ const Num = defineComponent({
           {
             type: 'number',
             modelValue: p.modelValue,
+            error: error.value,
             'onUpdate:modelValue': (v: string) => emit('update:modelValue', Math.max(0, Math.floor(Number(v) || 0)))
           },
           p.suffix ? { suffix: () => h('span', { class: 'text-sm' }, p.suffix) } : undefined

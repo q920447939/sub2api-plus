@@ -79,13 +79,18 @@ type SuggestionRow struct {
 	At       time.Time `json:"created_at"`
 }
 
+// RangeStart 「近 N 天」的起点（含今天，按站点时区的自然日），看板和列表下钻用同一个口径
+func (s *Service) RangeStart(days int) time.Time {
+	today := timezone.StartOfDay(s.Now().In(timezone.Location()))
+	return today.AddDate(0, 0, -(days - 1))
+}
+
 func (s *Service) Stats(ctx context.Context, days int) (*Stats, error) {
 	if days <= 0 || days > 365 {
 		days = 30
 	}
 	loc := timezone.Location()
-	today := timezone.StartOfDay(s.Now().In(loc))
-	since := today.AddDate(0, 0, -(days - 1))
+	since := s.RangeStart(days)
 	db := s.Repo.db
 	st := &Stats{Days: days}
 

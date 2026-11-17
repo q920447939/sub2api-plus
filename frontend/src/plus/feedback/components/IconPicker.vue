@@ -1,7 +1,8 @@
 <!-- [plus] 场景图标选择：常用 emoji 一键选择，也可以输入任意 emoji -->
 <template>
-  <div ref="root" class="relative">
+  <div ref="root" class="relative" @keydown.esc="onEsc">
     <button
+      ref="trigger"
       type="button"
       class="flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-gray-200 bg-white text-xl transition-colors hover:border-primary-400 dark:border-dark-600 dark:bg-dark-800"
       :class="open ? 'border-primary-500 ring-2 ring-primary-500/20' : ''"
@@ -52,7 +53,16 @@ const PRESETS = [
 const open = ref(false)
 const custom = ref('')
 const root = ref<HTMLElement>()
+const trigger = ref<HTMLButtonElement>()
 onClickOutside(root, () => (open.value = false))
+
+// Esc 只收起弹层，不让外层对话框跟着关闭
+function onEsc(e: KeyboardEvent) {
+  if (!open.value) return
+  e.stopPropagation()
+  open.value = false
+  trigger.value?.focus()
+}
 
 function pick(e: string) {
   emit('update:modelValue', e)

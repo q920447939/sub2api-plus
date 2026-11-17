@@ -225,6 +225,11 @@ func (h *Handler) adminList(c *gin.Context) {
 	if t, err := time.Parse(time.RFC3339, c.Query("to")); err == nil {
 		aq.To = &t
 	}
+	// days=N：只看近 N 天提交的，与看板口径一致（看板下钻带过来）
+	if n, err := strconv.Atoi(c.Query("days")); err == nil && n > 0 && n <= 365 && aq.From == nil {
+		t := h.svc.RangeStart(n)
+		aq.From = &t
+	}
 	if v := c.Query("rewarded"); v != "" {
 		b := v == "1" || v == "true"
 		aq.Rewarded = &b

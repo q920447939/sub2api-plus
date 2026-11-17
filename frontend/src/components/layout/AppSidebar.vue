@@ -49,13 +49,14 @@
                 @click="handleGroupClick(item)"
               >
                 <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+                <NavBadge v-if="item.badge && sidebarCollapsed" :count="item.badge() ?? 0" collapsed /><!-- [plus] -->
                 <span
                   class="sidebar-label sidebar-label-flex"
                   :class="{ 'sidebar-label-collapsed': sidebarCollapsed }"
                   :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
                 >
                   <span class="min-w-0 truncate">{{ item.label }}</span>
-                  <NavBadge v-if="item.badge && !isGroupExpanded(item)" :count="item.badge() ?? 0" /><!-- [plus] -->
+                  <NavBadge v-if="item.badge && !sidebarCollapsed && !isGroupExpanded(item)" :count="item.badge() ?? 0" /><!-- [plus] -->
                   <ChevronDownIcon
                     class="h-4 w-4 flex-shrink-0 transition-transform duration-200"
                     :class="isGroupExpanded(item) ? 'rotate-180' : ''"
