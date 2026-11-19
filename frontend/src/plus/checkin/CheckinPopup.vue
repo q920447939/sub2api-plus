@@ -93,7 +93,7 @@ import {
   resetCheckinPopupSession,
   submitCheckin
 } from './popupState'
-import { waitForQuietScreen } from '../shared/waitForQuietScreen'
+import { acquirePopupSlot, POPUP_PRIORITY } from '../shared/popupQueue'
 
 const router = useRouter()
 const route = useRoute()
@@ -174,13 +174,27 @@ async function tryAutoOpen(uid: number) {
   while (!ctl.signal.aborted && route.meta.requiresAuth === false) {
     await new Promise((r) => setTimeout(r, 1000))
   }
-  if (!(await waitForQuietScreen({ signal: ctl.signal }))) return
-  if (route.meta.requiresAuth === false) return
-  // 等待期间可能已在别处签到或被关闭
-  if (ctl.signal.aborted || authStore.user?.id !== uid) return
-  if (checkinStatus.value?.today_checked || isPopupSuppressed(uid, st.today)) return
+  // 和其他登录弹窗（如邮箱未验证警告）排队，屏幕安静且轮到自己时才弹
+  const release = await acquirePopupSlot('checkin', POPUP_PRIORITY.engagement, ctl.signal)
+  if (!release) return
+  // 等待期间可能已在别处签到、被关闭或进入公开页
+  if (ctl.signal.aborted || authStore.user?.id !== uid || route.meta.requiresAuth === false ||
+      checkinStatus.value?.today_checked || isPopupSuppressed(uid, st.today) || popupOpen.value) {
+    release()
+    return
+  }
+  slotRelease = release
   popupOpen.value = true
 }
+
+// 自动弹出占用的显示权：弹窗关闭时归还，让下一个排队的弹窗出来
+let slotRelease: (() => void) | null = null
+watch(popupOpen, (open) => {
+  if (!open && slotRelease) {
+    slotRelease()
+    slotRelease = null
+  }
+})
 
 watch(
   userId,
@@ -197,6 +211,7 @@ watch(
 
 onBeforeUnmount(() => {
   abort?.abort()
+  slotRelease?.()
   window.removeEventListener('keydown', onKeydown)
 })
 </script>

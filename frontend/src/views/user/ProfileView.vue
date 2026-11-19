@@ -15,6 +15,9 @@
         :wechat-mp-enabled="wechatOAuthMPEnabled"
       />
 
+      <!-- [plus] 邮箱验证状态卡片 -->
+      <ProfileEmailVerifyCard />
+
       <div
         v-if="contactInfo"
         class="card border-primary-200 bg-primary-50 p-6 dark:bg-primary-900/20"
@@ -59,6 +62,7 @@ import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
 import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
 import ProfileTotpCard from '@/components/user/profile/ProfileTotpCard.vue'
 import ProfilePasskeyCard from '@/components/user/profile/ProfilePasskeyCard.vue'
+import ProfileEmailVerifyCard from '@/plus/emailverify/ProfileEmailVerifyCard.vue' // [plus]
 import { isWeChatWebOAuthEnabled } from '@/api/auth'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'

@@ -18,6 +18,8 @@ import { plusChannelStatusRoutes } from '@/plus/channelstatus/routes' // [plus]
 import { plusIQRoutes } from '@/plus/iq/routes' // [plus]
 import { plusDispatchRoutes } from '@/plus/dispatch/routes' // [plus]
 import { plusFeedbackRoutes } from '@/plus/feedback/routes' // [plus]
+import { plusEmailVerifyRoutes } from '@/plus/emailverify/routes' // [plus]
+import { plusOutreachRoutes } from '@/plus/outreach/routes' // [plus]
 
 /**
  * Route definitions with lazy loading
@@ -450,6 +452,8 @@ const routes: RouteRecordRaw[] = [
   ...plusIQRoutes, // [plus] 模型画廊（用户端 /model-gallery + 管理端 /admin/model-iq/*）
   ...plusDispatchRoutes, // [plus] 上游调度台（只有管理端 /admin/dispatch/*）
   ...plusFeedbackRoutes, // [plus] 反馈中心（用户端 /feedback/* + 管理端 /admin/feedback/*）
+  ...plusEmailVerifyRoutes, // [plus] 邮箱验证（管理端 /admin/email-verify）
+  ...plusOutreachRoutes, // [plus] 用户触达（管理端 /admin/outreach/*、领取 /outreach/claim、退订 /unsubscribe）
 
   // ==================== Admin Routes ====================
   {

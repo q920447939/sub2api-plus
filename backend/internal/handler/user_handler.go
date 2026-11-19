@@ -637,3 +637,9 @@ func buildUserProfileSourceContext(provider string) *userProfileSourceContext {
 		Source:   provider,
 	}
 }
+
+// UserSvc 暴露 UserService 供 plus 模块使用（[plus]）
+func (h *UserHandler) UserSvc() *service.UserService { return h.userService }
+
+// EmailSvc 暴露 EmailService 供 plus 模块使用（[plus]）
+func (h *UserHandler) EmailSvc() *service.EmailService { return h.emailService }

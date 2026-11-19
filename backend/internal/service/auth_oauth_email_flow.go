@@ -299,6 +299,7 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 	// snapshot user × platform quota（fail-open）
 	_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
 	s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
+	plusAfterEmailVerified(ctx, user.ID, user.Email, PlusEmailVerifiedOAuth) // [plus] 两条第三方注册路径都在这里完成
 	return nil
 }
 

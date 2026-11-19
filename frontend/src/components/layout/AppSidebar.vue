@@ -245,6 +245,7 @@ import { IQNavIcon } from '@/plus/iq/navIcon' // [plus]
 import { iqAdminNav } from '@/plus/iq/adminNav' // [plus]
 import { dispatchAdminNav } from '@/plus/dispatch/adminNav' // [plus]
 import { feedbackAdminNav, feedbackUserNav } from '@/plus/feedback/nav' // [plus]
+import { outreachAdminNav } from '@/plus/outreach/nav' // [plus]
 import NavBadge from '@/plus/feedback/components/NavBadge.vue' // [plus]
 
 interface NavItem {
@@ -920,6 +921,7 @@ const adminNavItems = computed((): NavItem[] => {
     iqAdminNav, // [plus]
     dispatchAdminNav, // [plus]
     feedbackAdminNav, // [plus]
+    outreachAdminNav, // [plus]
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 

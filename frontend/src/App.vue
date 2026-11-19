@@ -7,6 +7,7 @@ import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import CheckinPopup from '@/plus/checkin/CheckinPopup.vue' // [plus]
+import EmailVerifyReminder from '@/plus/emailverify/EmailVerifyReminder.vue' // [plus]
 import PlusEmbedHost from '@/plus/embed/PlusEmbedHost.vue' // [plus]
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
@@ -169,6 +170,7 @@ onMounted(async () => {
   <Toast />
   <AnnouncementPopup />
   <CheckinPopup /> <!-- [plus] -->
+  <EmailVerifyReminder /> <!-- [plus] 邮箱未验证警告，与签到弹窗排队 -->
   <PlusEmbedHost /> <!-- [plus] persistent iframes for embedded plus apps -->
   <AdminComplianceDialog />
 </template>

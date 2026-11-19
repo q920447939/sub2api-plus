@@ -9,8 +9,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/plus/channelstatus"
 	"github.com/Wei-Shaw/sub2api/internal/plus/checkin"
 	"github.com/Wei-Shaw/sub2api/internal/plus/dispatch"
+	"github.com/Wei-Shaw/sub2api/internal/plus/emailverify"
 	"github.com/Wei-Shaw/sub2api/internal/plus/feedback"
 	"github.com/Wei-Shaw/sub2api/internal/plus/iq"
+	"github.com/Wei-Shaw/sub2api/internal/plus/outreach"
 	"github.com/Wei-Shaw/sub2api/internal/plus/points"
 	"github.com/Wei-Shaw/sub2api/internal/plus/slotmachine"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -26,6 +28,8 @@ func RegisterRoutes(
 	apiKey *service.APIKeyService,
 	sub *service.SubscriptionService,
 	settings *service.SettingService,
+	userSvc *service.UserService,
+	emailSvc *service.EmailService,
 ) {
 	h := NewHandler(apiKey, sub, settings)
 
@@ -47,6 +51,25 @@ func RegisterRoutes(
 	registerIQ(v1, plus, adminAuth, sub, apiKey)
 	registerDispatch(v1, adminAuth, sub)
 	registerFeedback(v1, plus, adminAuth, sub, pointsSvc != nil)
+	registerEmailVerify(v1, plus, adminAuth, sub, settings, userSvc, emailSvc, pointsSvc != nil)
+}
+
+// registerEmailVerify wires 邮箱验证补齐模块。积分模块不可用时仍可使用，只是不发奖励。
+func registerEmailVerify(v1, userGroup *gin.RouterGroup, adminAuth gin.HandlerFunc, sub *service.SubscriptionService, settings *service.SettingService, userSvc *service.UserService, emailSvc *service.EmailService, withPoints bool) {
+	db, err := service.PlusSQLDB(sub)
+	if err != nil {
+		log.Printf("[plus.emailverify] disabled: %v", err)
+		return
+	}
+	admin := v1.Group("/plus/admin")
+	admin.Use(adminAuth)
+	pub := v1.Group("/plus")
+	// 两个模块各管各的设置，互不 import；只在这里通过对方声明的接口接线：
+	//   触达中心 → 邮箱验证：签发验证 token、标记无效邮箱、读验证奖励（outreach.Verification）
+	//   邮箱验证 → 触达中心：发验证邀请邮件（emailverify.InviteMailer）
+	ev := emailverify.Register(db, withPoints, pub, userGroup, admin, userSvc, emailSvc, settings)
+	oc := outreach.Register(db, withPoints, pub, userGroup, admin, emailSvc, settings, ev)
+	ev.SetInviteMailer(oc)
 }
 
 // registerFeedback wires 用户反馈中心。积分模块不可用时仍可使用，只是结案不能发积分。

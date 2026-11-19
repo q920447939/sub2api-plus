@@ -70,6 +70,7 @@ func (s *AuthService) BindEmailIdentity(
 			return nil, err
 		}
 		s.revokeEmailIdentitySessions(ctx, userID)
+		plusAfterEmailVerified(ctx, userID, normalizedEmail, PlusEmailVerifiedBind) // [plus]
 		return currentUser, nil
 	}
 
@@ -89,6 +90,7 @@ func (s *AuthService) BindEmailIdentity(
 	}
 
 	s.revokeEmailIdentitySessions(ctx, userID)
+	plusAfterEmailVerified(ctx, userID, normalizedEmail, PlusEmailVerifiedBind) // [plus]
 	return currentUser, nil
 }
 
