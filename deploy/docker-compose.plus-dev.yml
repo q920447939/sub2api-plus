@@ -27,7 +27,7 @@ services:
       dockerfile: deploy/Dockerfile
       args:
         GOPROXY: "https://goproxy.cn,direct"
-        GOLANG_IMAGE: "golang:1.27.3-alpine"   # go.mod requires >=1.27.3; deploy/Dockerfile default is behind
+        GOLANG_IMAGE: "golang:1.27.4-alpine"   # go.mod requires >=1.27.4; deploy/Dockerfile default is behind
     image: sub2api-plus:dev                # separate tag from :local so builds don't conflict
     container_name: sub2api-plus-dev
     restart: unless-stopped
