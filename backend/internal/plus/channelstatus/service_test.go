@@ -69,7 +69,7 @@ func newTestService(cfg Config, src SignalSource, judge FallbackJudge) *Service 
 		Catalog: fakeCatalog{
 			{ID: 1, Name: "Claude Max", Platform: "anthropic"},
 			{ID: 2, Name: "Claude 特惠", Platform: "anthropic"},
-			{ID: 3, Name: "GPT", Platform: "openai"},
+			{ID: 3, Name: "GPT", Platform: "openai", RateMultiplier: 0.08},
 		},
 		Source:   src,
 		Fallback: judge,
@@ -108,7 +108,7 @@ func TestSnapshot_LayoutOrderVisibilityAndStatus(t *testing.T) {
 		t.Fatalf("平台顺序/名称不对: %+v", snap.Platforms)
 	}
 	gpt := snap.Platforms[0].Groups[0]
-	if gpt.Name != "GPT 官方" || gpt.Subtitle != "Responses" || gpt.Status != StatusDown || gpt.Score == nil || *gpt.Score != 0 {
+	if gpt.Name != "GPT 官方" || gpt.Subtitle != "Responses" || gpt.RateMultiplier != 0.08 || gpt.Status != StatusDown || gpt.Score == nil || *gpt.Score != 0 {
 		t.Fatalf("GPT 行不对: %+v", gpt)
 	}
 	claude := snap.Platforms[1].Groups

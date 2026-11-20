@@ -36,7 +36,7 @@ function baseConfig(): Config {
     rules: {
       up_min: 80, warn_min: 50, min_sample: 50, history_min_sample: 10,
       warning_error_rate: 0.05, critical_error_rate: 0.2, target_ttft_ms: 3000, critical_ttft_ms: 10000,
-      warning_cache_rate: 0, critical_cache_rate: 0, error_weight: 0.6, ttft_weight: 0.2, cache_weight: 0.2,
+      error_weight: 0.75, ttft_weight: 0.25,
       ignored_error_categories: [],
       exclude_user_side_errors: true
     },

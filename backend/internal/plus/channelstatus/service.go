@@ -130,11 +130,12 @@ func (s *Service) Snapshot(ctx context.Context, granularity string) (*Snapshot, 
 	historyRules := cfg.Rules.ForHistory()
 	for _, r := range rows {
 		gv := GroupView{
-			GroupID:  r.layout.GroupID,
-			Name:     r.layout.DisplayName,
-			Subtitle: r.layout.Subtitle,
-			Status:   StatusUnknown,
-			History:  make([]Bucket, tl.Count),
+			GroupID:        r.layout.GroupID,
+			Name:           r.layout.DisplayName,
+			Subtitle:       r.layout.Subtitle,
+			RateMultiplier: r.info.RateMultiplier,
+			Status:         StatusUnknown,
+			History:        make([]Bucket, tl.Count),
 		}
 		if gv.Name == "" {
 			gv.Name = r.info.Name

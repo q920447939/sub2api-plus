@@ -92,9 +92,6 @@ func TestPassiveSource_CurrentWindow1m(t *testing.T) {
 	if s.TTFTP50Ms == nil || *s.TTFTP50Ms != 5000 || s.TTFTSamples != 90 {
 		t.Fatalf("只用 user_id=0 的 ttft 直方图，p50=5000/90, got %v/%d", s.TTFTP50Ms, s.TTFTSamples)
 	}
-	if s.CacheDenom != 1000 || s.CacheRate != 0.3 {
-		t.Fatalf("缓存 300/1000, got %d %v", s.CacheDenom, s.CacheRate)
-	}
 	if got[8][start.Unix()].Requests != 5 {
 		t.Fatalf("分组 8 应有 5 次请求: %+v", got[8])
 	}

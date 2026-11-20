@@ -12,8 +12,6 @@ type Signal struct {
 	Errors      int64
 	TTFTP50Ms   *int64
 	TTFTSamples int64
-	CacheRate   float64
-	CacheDenom  int64
 }
 
 // SignalSource 信号来源（被动统计、探测结果等都实现它，可用责任链组合）。
@@ -47,9 +45,10 @@ type FallbackJudge interface {
 
 // GroupInfo sub2api 分组的只读信息
 type GroupInfo struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Platform string `json:"platform"`
+	ID             int64   `json:"id"`
+	Name           string  `json:"name"`
+	Platform       string  `json:"platform"`
+	RateMultiplier float64 `json:"rate_multiplier"` // 基础倍率（不含高峰时段倍率与用户专属倍率）
 }
 
 // GroupCatalog 分组目录（只读上游 groups 表，仅返回未删除且启用的分组）

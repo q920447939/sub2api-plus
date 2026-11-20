@@ -63,9 +63,8 @@ type sigKey struct {
 }
 
 type sigAcc struct {
-	success, errors, ignored      int64
-	input, cacheCreate, cacheRead int64
-	hist                          map[int64]int64
+	success, errors, ignored int64
+	hist                     map[int64]int64
 }
 
 // hourlyRollupSpan 小时汇总保留 30 天，留 1 天余量
@@ -142,29 +141,25 @@ func (s *PassiveSource) accumulate(ctx context.Context, accs map[sigKey]*sigAcc,
 	}
 	bin := `date_bin($1::interval, t.bucket_start, $2::timestamptz)`
 
-	// 1) 请求量 / 错误量 / 缓存相关 token
+	// 1) 请求量 / 错误量
 	rows, err := s.db.QueryContext(ctx, `SELECT t.group_id, `+bin+`,
-		SUM(t.success_requests), SUM(t.error_requests),
-		SUM(t.input_tokens), SUM(t.cache_creation_tokens), SUM(t.cache_read_tokens)
+		SUM(t.success_requests), SUM(t.error_requests)
 		FROM `+tier.metrics+` t WHERE `+where+` GROUP BY 1, 2`, args...)
 	if err != nil {
 		return fmt.Errorf("channelstatus: load metrics: %w", err)
 	}
 	if err := scanRows(rows, func() error {
 		var (
-			g                                 int64
-			b                                 time.Time
-			succ, errs, input, cCreate, cRead int64
+			g          int64
+			b          time.Time
+			succ, errs int64
 		)
-		if err := rows.Scan(&g, &b, &succ, &errs, &input, &cCreate, &cRead); err != nil {
+		if err := rows.Scan(&g, &b, &succ, &errs); err != nil {
 			return err
 		}
 		a := get(g, b)
 		a.success += succ
 		a.errors += errs
-		a.input += input
-		a.cacheCreate += cCreate
-		a.cacheRead += cRead
 		return nil
 	}); err != nil {
 		return err
@@ -235,11 +230,6 @@ func (a *sigAcc) signal() Signal {
 	}
 	sig := Signal{Requests: req, Errors: errs}
 	sig.TTFTP50Ms, sig.TTFTSamples = histPercentile(a.hist, 0.5)
-	// 缓存命中率口径与 V2 一致：cache_read / (input + cache_creation + cache_read)
-	if denom := a.input + a.cacheCreate + a.cacheRead; denom > 0 {
-		sig.CacheDenom = denom
-		sig.CacheRate = float64(a.cacheRead) / float64(denom)
-	}
 	return sig
 }
 

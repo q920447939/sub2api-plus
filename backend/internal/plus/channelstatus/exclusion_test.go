@@ -69,7 +69,7 @@ func TestRules_NullIgnoredCategoriesBecomesEmptyArray(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"rules":{"ignored_error_categories":null}}`), &cfg); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Rules.normalize()
+	cfg.Rules.Normalize()
 	b, _ := json.Marshal(cfg.Rules)
 	var m map[string]any
 	_ = json.Unmarshal(b, &m)

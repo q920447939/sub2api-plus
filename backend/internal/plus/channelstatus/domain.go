@@ -52,12 +52,14 @@ type Bucket struct {
 
 // GroupView 用户端一行（一个分组）
 type GroupView struct {
-	GroupID  int64    `json:"group_id"`
-	Name     string   `json:"name"`
-	Subtitle string   `json:"subtitle"`
-	Status   Status   `json:"status"`
-	Score    *float64 `json:"score"`
-	History  []Bucket `json:"history"`
+	GroupID  int64  `json:"group_id"`
+	Name     string `json:"name"`
+	Subtitle string `json:"subtitle"`
+	// RateMultiplier 分组基础倍率；高峰时段倍率与用户专属倍率不体现
+	RateMultiplier float64  `json:"rate_multiplier"`
+	Status         Status   `json:"status"`
+	Score          *float64 `json:"score"`
+	History        []Bucket `json:"history"`
 }
 
 // PlatformView 用户端一个平台 Tab

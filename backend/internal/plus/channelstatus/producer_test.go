@@ -78,6 +78,9 @@ func TestConfig_OldDataGetsHistoryMinSampleDefault(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("旧配置应仍可通过校验: %v", err)
 	}
+	if !approx(cfg.Rules.ErrorWeight, 0.75) || !approx(cfg.Rules.TTFTWeight, 0.25) {
+		t.Fatalf("旧权重 0.6/0.2/0.2 应换算为 0.75/0.25, got %v/%v", cfg.Rules.ErrorWeight, cfg.Rules.TTFTWeight)
+	}
 }
 
 func TestPlanSegments_WeekSplitsAtUTCMidnight(t *testing.T) {

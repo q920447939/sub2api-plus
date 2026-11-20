@@ -55,9 +55,7 @@ func (c *Config) normalize() error {
 	if r.UpMin == 0 && r.WarnMin == 0 && r.MinSample == 0 {
 		*r = channelstatus.DefaultRules()
 	}
-	if r.IgnoredCategories == nil {
-		r.IgnoredCategories = []string{}
-	}
+	r.Normalize() // 旧配置的缓存权重去掉后按比例换算
 	if err := r.Validate(); err != nil {
 		return fmt.Errorf("%w：%v", ErrInvalid, err)
 	}

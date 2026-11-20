@@ -78,7 +78,7 @@
           <Row label="降级">健康分不低于 <NumInput :value="R.warn_min" :disabled="same" @change="setRule('warn_min', $event)" />，再低是异常</Row>
           <Row label="失败率">到 <NumInput :value="Math.round(R.critical_error_rate * 100)" :disabled="same" @change="setRule('critical_error_rate', $event / 100)" /> % 时这一项记 0 分</Row>
           <Row label="首字耗时"><NumInput :value="R.target_ttft_ms / 1000" :disabled="same" @change="setRule('target_ttft_ms', $event * 1000)" /> 秒以内满分，<NumInput :value="R.critical_ttft_ms / 1000" :disabled="same" @change="setRule('critical_ttft_ms', $event * 1000)" /> 秒以上记 0 分</Row>
-          <Row label="比重">失败率 <NumInput :value="Math.round(R.error_weight * 100)" :disabled="same" @change="setRule('error_weight', $event / 100)" />，首字耗时 <NumInput :value="Math.round(R.ttft_weight * 100)" :disabled="same" @change="setRule('ttft_weight', $event / 100)" />，缓存 <NumInput :value="Math.round(R.cache_weight * 100)" :disabled="same" @change="setRule('cache_weight', $event / 100)" /></Row>
+          <Row label="比重">失败率 <NumInput :value="Math.round(R.error_weight * 100)" :disabled="same" @change="setWeight('error_weight', $event)" />，首字耗时 <NumInput :value="Math.round(R.ttft_weight * 100)" :disabled="same" @change="setWeight('ttft_weight', $event)" />（两项合计 100，改一项另一项自动补齐；缓存命中率不计入健康分）</Row>
           <Row label="最少请求数">状态条每一格 <NumInput :value="R.history_min_sample" :disabled="same" @change="setRule('history_min_sample', $event)" /> 次，当前状态 <NumInput :value="R.min_sample" :disabled="same" @change="setRule('min_sample', $event)" /> 次</Row>
         </div>
       </template>
@@ -174,6 +174,12 @@ function saveCfg(patch: Partial<Config>) {
 }
 function setRule(k: keyof HealthRules, v: number) {
   void saveCfg({ rules: { ...cfg.value!.config.rules, [k]: v } })
+}
+// 比重两项互补：改一项，另一项 = 100 - 这一项
+function setWeight(k: 'error_weight' | 'ttft_weight', pct: number) {
+  const v = Math.min(100, Math.max(0, pct)) / 100
+  const other = k === 'error_weight' ? 'ttft_weight' : 'error_weight'
+  void saveCfg({ rules: { ...cfg.value!.config.rules, [k]: v, [other]: Math.round((1 - v) * 100) / 100 } })
 }
 
 const missName = (k: string) => {

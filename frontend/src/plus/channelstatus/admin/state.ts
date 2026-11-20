@@ -101,9 +101,7 @@ function validateRules(c: Config): string {
   if (!(r.warning_error_rate > 0 && r.critical_error_rate >= r.warning_error_rate && r.critical_error_rate <= 1))
     return '错误率阈值需满足 0 < 告警 ≤ 严重 ≤ 100%'
   if (!(r.target_ttft_ms > 0 && r.critical_ttft_ms > r.target_ttft_ms)) return 'TTFT 需满足 0 < 目标 < 严重'
-  if (!(r.critical_cache_rate >= 0 && r.critical_cache_rate <= r.warning_cache_rate && r.warning_cache_rate <= 1))
-    return '缓存命中率阈值需满足 0 ≤ 严重 ≤ 告警 ≤ 100%'
-  if ([r.error_weight, r.ttft_weight, r.cache_weight].some((w) => w < 0)) return '权重不能为负'
-  if (Math.abs(r.error_weight + r.ttft_weight + r.cache_weight - 1) > 0.001) return '三项权重之和必须等于 100%'
+  if ([r.error_weight, r.ttft_weight].some((w) => w < 0)) return '权重不能为负'
+  if (Math.abs(r.error_weight + r.ttft_weight - 1) > 0.001) return '两项权重之和必须等于 100%'
   return ''
 }

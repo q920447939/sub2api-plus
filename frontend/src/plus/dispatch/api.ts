@@ -358,11 +358,8 @@ export interface HealthRules {
   critical_error_rate: number
   target_ttft_ms: number
   critical_ttft_ms: number
-  warning_cache_rate: number
-  critical_cache_rate: number
   error_weight: number
   ttft_weight: number
-  cache_weight: number
   ignored_error_categories: string[]
   exclude_user_side_errors: boolean
 }

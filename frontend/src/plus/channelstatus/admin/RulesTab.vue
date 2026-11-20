@@ -17,14 +17,14 @@
     <section class="card p-5">
       <h3 class="font-semibold text-gray-900 dark:text-white">健康分口径</h3>
       <p class="mb-4 text-xs text-gray-400">
-        健康分 = 三个维度各自 0–100 分后按权重加权；某维度样本不足时不参与，其余维度按权重重新归一化。默认值与上游 V2 一致。
+        健康分 = 错误率、首字延迟两项各自 0–100 分后按权重加权；首字延迟样本不足时只看错误率。
+        缓存命中率取决于用户的使用方式，不反映渠道是否可用，不计入健康分。
       </p>
       <div class="grid gap-4 md:grid-cols-3">
         <NumField v-model="errorWeight" label="错误率权重" suffix="%" :min="0" :max="100" />
         <NumField v-model="ttftWeight" label="首字延迟权重" suffix="%" :min="0" :max="100" />
-        <NumField v-model="cacheWeight" label="缓存命中率权重" suffix="%" :min="0" :max="100" />
+        <p class="self-end text-xs text-gray-400">两项合计 100%，修改一项时另一项自动补齐</p>
       </div>
-      <p class="mt-2 text-xs" :class="weightOk ? 'text-gray-400' : 'text-red-500'">当前合计 {{ weightSum }}%（必须为 100%）</p>
 
       <div class="mt-5 grid gap-4 md:grid-cols-3">
         <NumField v-model="warnErr" label="错误率告警线" suffix="%" :min="0" :max="100" :step="0.1" />
@@ -32,10 +32,6 @@
         <div />
         <NumField v-model="r.target_ttft_ms" label="TTFT 目标（不高于即满分）" suffix="ms" :min="1" />
         <NumField v-model="r.critical_ttft_ms" label="TTFT 严重线（达到即 0 分）" suffix="ms" :min="1" />
-        <div />
-        <NumField v-model="warnCache" label="缓存命中率告警线" suffix="%" :min="0" :max="100" />
-        <NumField v-model="critCache" label="缓存命中率严重线" suffix="%" :min="0" :max="100" />
-        <p class="self-end text-xs text-gray-400">两项都为 0 表示不因缓存未命中扣分（默认）</p>
       </div>
     </section>
 
@@ -76,23 +72,21 @@ import Toggle from '@/components/common/Toggle.vue'
 const r = computed(() => settings.draft?.rules)
 
 // 比例字段（0~1）在界面上按百分比编辑
-type RatioKey = 'error_weight' | 'ttft_weight' | 'cache_weight' | 'warning_error_rate' | 'critical_error_rate' | 'warning_cache_rate' | 'critical_cache_rate'
-function pct(key: RatioKey): WritableComputedRef<number> {
+type RatioKey = 'error_weight' | 'ttft_weight' | 'warning_error_rate' | 'critical_error_rate'
+// complement：两项权重互补，改一项时另一项 = 100% - 这一项
+function pct(key: RatioKey, complement?: RatioKey): WritableComputedRef<number> {
   return computed({
     get: () => Math.round((r.value?.[key] ?? 0) * 1000) / 10,
     set: (v: number) => {
-      if (r.value) (r.value as Rules)[key] = Math.round(v * 10) / 1000
+      if (!r.value) return
+      const ratio = Math.round(Math.min(Math.max(v, 0), 100) * 10) / 1000
+      ;(r.value as Rules)[key] = ratio
+      if (complement) (r.value as Rules)[complement] = Math.round((1 - ratio) * 1000) / 1000
     }
   })
 }
-const errorWeight = pct('error_weight')
-const ttftWeight = pct('ttft_weight')
-const cacheWeight = pct('cache_weight')
+const errorWeight = pct('error_weight', 'ttft_weight')
+const ttftWeight = pct('ttft_weight', 'error_weight')
 const warnErr = pct('warning_error_rate')
 const critErr = pct('critical_error_rate')
-const warnCache = pct('warning_cache_rate')
-const critCache = pct('critical_cache_rate')
-
-const weightSum = computed(() => Math.round((errorWeight.value + ttftWeight.value + cacheWeight.value) * 10) / 10)
-const weightOk = computed(() => Math.abs(weightSum.value - 100) < 0.1)
 </script>

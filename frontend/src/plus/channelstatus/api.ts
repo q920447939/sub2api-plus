@@ -16,6 +16,7 @@ export interface GroupView {
   group_id: number
   name: string
   subtitle: string
+  rate_multiplier: number // 分组基础倍率，不含高峰时段倍率与用户专属倍率
   status: Status
   score: number | null
   history: HistoryBucket[]
@@ -62,11 +63,8 @@ export interface Rules {
   critical_error_rate: number
   target_ttft_ms: number
   critical_ttft_ms: number
-  warning_cache_rate: number
-  critical_cache_rate: number
   error_weight: number
   ttft_weight: number
-  cache_weight: number
   ignored_error_categories: string[]
   exclude_user_side_errors: boolean // 排除用户侧业务限制错误（余额不足、Key 无效等），与运维监控 SLA 一致
 }
@@ -134,6 +132,7 @@ export interface GroupInfo {
   id: number
   name: string
   platform: string
+  rate_multiplier: number
 }
 
 export interface AdminConfig {

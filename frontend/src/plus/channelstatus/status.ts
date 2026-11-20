@@ -75,10 +75,16 @@ export const ERROR_CATEGORY_LABELS: Record<string, string> = {
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-export function formatBucket(iso: string, g: Granularity): string {
+export function formatBucketRange(iso: string, g: Granularity): string {
   const d = new Date(iso)
   const md = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  if (g === 'hour') return `${md} ${pad(d.getHours())}:00`
-  if (g === 'week') return `${md} 起一周`
+  if (g === 'hour') {
+    const e = new Date(d.getTime() + 3600_000)
+    return `${md} ${pad(d.getHours())}:00 – ${pad(e.getHours())}:00`
+  }
+  if (g === 'week') {
+    const e = new Date(d.getTime() + 6 * 86400_000)
+    return `${md} – ${pad(e.getMonth() + 1)}-${pad(e.getDate())}`
+  }
   return md
 }

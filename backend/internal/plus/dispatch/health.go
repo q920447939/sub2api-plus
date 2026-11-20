@@ -6,7 +6,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/plus/channelstatus"
 )
 
-// Health 健康分：和渠道状态同一套算法（失败率 + 首字耗时中位数 + 缓存，加权），按任意范围算
+// Health 健康分：和渠道状态同一套算法（失败率 + 首字耗时中位数，加权；缓存不参与），按任意范围算
 type Health struct {
 	Rules channelstatus.Rules
 }
@@ -24,9 +24,6 @@ func (h Health) signal(a Agg) channelstatus.Signal {
 	if a.P50N > 0 {
 		v := int64(a.TTFTP50)
 		s.TTFTP50Ms, s.TTFTSamples = &v, a.P50N
-	}
-	if a.CacheTotal > 0 {
-		s.CacheRate, s.CacheDenom = float64(a.CacheRead)/float64(a.CacheTotal), a.Total()
 	}
 	return s
 }

@@ -114,7 +114,6 @@ func rulesDiff(a, b Config) []string {
 	f("首字记 0 分", float64(x.CriticalTTFTMs)/1000, float64(y.CriticalTTFTMs)/1000, " 秒")
 	f("失败率比重", x.ErrorWeight*100, y.ErrorWeight*100, "")
 	f("首字比重", x.TTFTWeight*100, y.TTFTWeight*100, "")
-	f("缓存比重", x.CacheWeight*100, y.CacheWeight*100, "")
 	f("每格最少请求", float64(x.HistoryMinSample), float64(y.HistoryMinSample), "")
 	f("当前状态最少请求", float64(x.MinSample), float64(y.MinSample), "")
 	return out

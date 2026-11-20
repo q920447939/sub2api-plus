@@ -23,7 +23,7 @@ var (
 // ListGroups 只读上游 groups 表（软删除与停用的分组不展示）
 func (r *Repository) ListGroups(ctx context.Context) ([]GroupInfo, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, COALESCE(name, ''), lower(COALESCE(NULLIF(TRIM(platform), ''), 'unknown'))
+		`SELECT id, COALESCE(name, ''), lower(COALESCE(NULLIF(TRIM(platform), ''), 'unknown')), COALESCE(rate_multiplier, 1)
 		 FROM groups WHERE deleted_at IS NULL AND status = 'active' ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -32,7 +32,7 @@ func (r *Repository) ListGroups(ctx context.Context) ([]GroupInfo, error) {
 	var out []GroupInfo
 	for rows.Next() {
 		var g GroupInfo
-		if err := rows.Scan(&g.ID, &g.Name, &g.Platform); err != nil {
+		if err := rows.Scan(&g.ID, &g.Name, &g.Platform, &g.RateMultiplier); err != nil {
 			return nil, err
 		}
 		out = append(out, g)
@@ -57,7 +57,7 @@ func (r *Repository) Load(ctx context.Context) (Config, int64, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, 0, err
 	}
-	cfg.Rules.normalize()
+	cfg.Rules.Normalize()
 	return cfg, ver, nil
 }
 

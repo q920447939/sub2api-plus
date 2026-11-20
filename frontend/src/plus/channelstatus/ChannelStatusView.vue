@@ -32,7 +32,7 @@
       <div v-else-if="!snapshot.platforms.length" class="card p-10 text-center text-gray-400">暂无可展示的渠道</div>
 
       <template v-else>
-        <!-- 平台 Tab -->
+        <!-- 平台 Tab：只做导航（Logo + 名称 + 分组数），不汇总状态；各分组状态点进平台查看 -->
         <nav class="flex flex-wrap gap-2" data-testid="cs-tabs">
           <button
             v-for="p in snapshot.platforms"
@@ -44,7 +44,7 @@
               : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-300'"
             @click="activeKey = p.platform"
           >
-            <span class="h-2 w-2 rounded-full" :class="STATUS_META[worst(p)].dot" />
+            <BrandLogo :platform="p.platform" :name="p.name" />
             {{ p.name }}
             <span class="text-xs text-gray-400">{{ p.groups.length }}</span>
           </button>
@@ -53,13 +53,14 @@
         <!-- 分组列表 -->
         <section
           v-if="active"
-          class="card divide-y divide-gray-100 overflow-hidden p-0 dark:divide-dark-700"
+          class="card divide-y divide-gray-100 p-0 dark:divide-dark-700"
           :class="{ 'opacity-60 transition-opacity': loading }"
         >
           <GroupRow
             v-for="g in active.groups"
             :key="g.group_id"
             :group="g"
+            :platform="active.platform"
             :granularity="snapshot.granularity"
             :span="span"
           />
@@ -78,11 +79,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import type { PlatformView, Status } from './api'
+import type { PlatformView } from './api'
 import { GRANULARITIES, STATUS_META, STATUS_ORDER } from './status'
 import { ChannelStatusNavIcon } from './navIcon'
 import { useChannelStatus } from './useChannelStatus'
 import GroupRow from './components/GroupRow.vue'
+import BrandLogo from './components/BrandLogo.vue'
 
 const { snapshot, granularity, loading, disabled, error } = useChannelStatus()
 
@@ -93,10 +95,4 @@ const active = computed<PlatformView | undefined>(() => {
 })
 
 const span = computed(() => GRANULARITIES.find((g) => g.value === snapshot.value?.granularity)?.span ?? '')
-
-// Tab 圆点：取该平台下最差的已知状态；全部未知时显示灰色
-const SEVERITY: Record<Status, number> = { unknown: 0, up: 1, warn: 2, down: 3 }
-function worst(p: PlatformView): Status {
-  return p.groups.reduce<Status>((acc, g) => (SEVERITY[g.status] > SEVERITY[acc] ? g.status : acc), 'unknown')
-}
 </script>

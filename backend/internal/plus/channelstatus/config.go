@@ -29,8 +29,8 @@ type PlatformLayout struct {
 	Groups   []GroupLayout `json:"groups"`
 }
 
-// Rules 健康规则。口径沿用上游 V2（错误率 + TTFT P50 + 缓存命中率加权），
-// 但在此独立持有，评分实现通过 Scorer 接口隔离，不直接耦合 V2 配置。
+// Rules 健康规则：错误率 + TTFT P50 加权（缓存命中率不参与评分）。
+// 在此独立持有，评分实现通过 Scorer 接口隔离，不直接耦合 V2 配置。
 type Rules struct {
 	UpMin             float64  `json:"up_min"`             // 分数 >= 此值为正常
 	WarnMin           float64  `json:"warn_min"`           // 分数 >= 此值为降级，否则异常
@@ -40,11 +40,8 @@ type Rules struct {
 	CriticalErrorRate float64  `json:"critical_error_rate"`
 	TargetTTFTMs      int64    `json:"target_ttft_ms"`
 	CriticalTTFTMs    int64    `json:"critical_ttft_ms"`
-	WarningCacheRate  float64  `json:"warning_cache_rate"`
-	CriticalCacheRate float64  `json:"critical_cache_rate"`
 	ErrorWeight       float64  `json:"error_weight"`
 	TTFTWeight        float64  `json:"ttft_weight"`
-	CacheWeight       float64  `json:"cache_weight"`
 	IgnoredCategories []string `json:"ignored_error_categories"`
 	// ExcludeUserSideErrors 排除用户侧业务限制错误（余额/配额不足、Key 无效、用户并发超限等，
 	// 即运维监控 SLA 排除的 is_business_limited 且归属 client 的错误）。
@@ -52,10 +49,24 @@ type Rules struct {
 	ExcludeUserSideErrors bool `json:"exclude_user_side_errors"`
 }
 
-// normalize 修正 JSON 里的 null 等缺省值，保证前端拿到的是数组
-func (r *Rules) normalize() {
+// Normalize 修正 JSON 里的 null 等缺省值，保证前端拿到的是数组；
+// 并把旧配置（含缓存权重，两项权重之和不足 100%）按比例换算，例如 60/20 → 75/25。
+// 读到配置后、校验前都要调用。
+func (r *Rules) Normalize() {
 	if r.IgnoredCategories == nil {
 		r.IgnoredCategories = []string{}
+	}
+	if r.ErrorWeight < 0 || r.TTFTWeight < 0 {
+		return // 交给 Validate 报错
+	}
+	sum := r.ErrorWeight + r.TTFTWeight
+	switch {
+	case sum <= 0:
+		d := DefaultRules()
+		r.ErrorWeight, r.TTFTWeight = d.ErrorWeight, d.TTFTWeight
+	case math.Abs(sum-1) > 0.001:
+		r.ErrorWeight = math.Round(r.ErrorWeight/sum*10000) / 10000
+		r.TTFTWeight = math.Round((1-r.ErrorWeight)*10000) / 10000
 	}
 }
 
@@ -71,14 +82,14 @@ type Config struct {
 	Probe              Probe            `json:"probe"`
 }
 
-// DefaultRules 与上游 V2 默认值一致：最小样本 50、错误率严重 20%、
-// TTFT 目标 3s / 严重 10s、权重 0.6/0.2/0.2、缓存默认不扣分（0/0）、分档 80/50
+// DefaultRules 最小样本 50、错误率严重 20%、TTFT 目标 3s / 严重 10s、权重 0.75/0.25、分档 80/50
+// （上游 V2 的 0.6/0.2/0.2 去掉缓存后按比例换算）
 func DefaultRules() Rules {
 	return Rules{
 		UpMin: 80, WarnMin: 50, MinSample: 50, HistoryMinSample: 10,
 		WarningErrorRate: 0.05, CriticalErrorRate: 0.20,
 		TargetTTFTMs: 3000, CriticalTTFTMs: 10000,
-		ErrorWeight: 0.60, TTFTWeight: 0.20, CacheWeight: 0.20,
+		ErrorWeight: 0.75, TTFTWeight: 0.25,
 		IgnoredCategories:     []string{},
 		ExcludeUserSideErrors: true,
 	}
@@ -98,7 +109,7 @@ func DefaultConfig() Config {
 }
 
 func (c *Config) Validate() error {
-	c.Rules.normalize()
+	c.Rules.Normalize()
 	switch c.RefreshSeconds {
 	case 30, 60, 120, 300:
 	default:
@@ -154,13 +165,10 @@ func (r *Rules) Validate() error {
 	if r.TargetTTFTMs <= 0 || r.CriticalTTFTMs <= r.TargetTTFTMs {
 		return invalid("TTFT 需满足 0 < 目标 < 严重")
 	}
-	if r.WarningCacheRate < 0 || r.CriticalCacheRate < 0 || r.WarningCacheRate > 1 || r.CriticalCacheRate > r.WarningCacheRate {
-		return invalid("缓存命中率阈值需满足 0 <= 严重 <= 告警 <= 100%%")
-	}
-	if r.ErrorWeight < 0 || r.TTFTWeight < 0 || r.CacheWeight < 0 {
+	if r.ErrorWeight < 0 || r.TTFTWeight < 0 {
 		return invalid("权重不能为负")
 	}
-	if math.Abs(r.ErrorWeight+r.TTFTWeight+r.CacheWeight-1) > 0.001 {
+	if math.Abs(r.ErrorWeight+r.TTFTWeight-1) > 0.001 {
 		return invalid("权重之和必须等于 100%%")
 	}
 	allowed := make(map[string]bool, len(ErrorCategories))
